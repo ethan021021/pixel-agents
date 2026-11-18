@@ -63,6 +63,7 @@ export class PtySession implements TerminalSession {
   private readonly serializeAddon: SerializeAddon;
   private readonly events = new TerminalEvents();
   private killTimer: ReturnType<typeof setTimeout> | null = null;
+  private title: string | undefined;
 
   cols: number;
   rows: number;
@@ -84,6 +85,9 @@ export class PtySession implements TerminalSession {
     this.mirror.loadAddon(
       this.serializeAddon as unknown as Parameters<HeadlessTerminal['loadAddon']>[0],
     );
+    this.mirror.onTitleChange((title) => {
+      this.title = title.length > 0 && title.length <= 240 ? title : undefined;
+    });
 
     this.pty.onData((chunk) => {
       this.mirror.write(chunk);
@@ -125,7 +129,13 @@ export class PtySession implements TerminalSession {
     return new Promise((resolve) => {
       this.mirror.write('', () => {
         const data = this.serializeAddon.serialize() + mouseEncodingMode(this.mirror);
-        resolve({ data, seq, cols: this.cols, rows: this.rows });
+        resolve({
+          data,
+          seq,
+          cols: this.cols,
+          rows: this.rows,
+          ...(this.title ? { title: this.title } : {}),
+        });
       });
     });
   }

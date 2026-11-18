@@ -1,8 +1,15 @@
 import { useCallback } from 'react';
 
+import type { LaunchProviderId } from '../../../core/src/messages.js';
 import { resumeConversation } from '../conversations/useConversations.js';
 import { transport } from '../transport/index.js';
 import type { Directory } from './useExtensionMessages.js';
+
+export type LaunchIntoDirectory = (
+  directory: Directory,
+  palette?: number,
+  providerId?: LaunchProviderId,
+) => void;
 
 /**
  * Launching an agent and resuming a conversation, from either shell. Both
@@ -12,10 +19,15 @@ import type { Directory } from './useExtensionMessages.js';
 export function useLaunchActions(expectLaunch: () => void) {
   // palette: the character picked from the roster (absent = the Directory's
   // default characters, else a random pick, server-side).
-  const launch = useCallback(
-    (directory: Directory, palette?: number) => {
+  const launch = useCallback<LaunchIntoDirectory>(
+    (directory, palette, providerId) => {
       expectLaunch();
-      transport.send({ type: 'launchAgent', directoryPath: directory.path, palette });
+      transport.send({
+        type: 'launchAgent',
+        directoryPath: directory.path,
+        palette,
+        ...(providerId && { providerId }),
+      });
     },
     [expectLaunch],
   );

@@ -76,7 +76,7 @@ Run Pixel Agents from anywhere:
 npx pixel-agents
 ```
 
-The CLI prints a local URL. Click **+** to open the drawer of Directories: add one with **+ Directory**, or turn on **Settings → Show Start Directory** to list the folder you started in. Pick a Directory to launch Claude Code in the browser's embedded terminal (on a phone, tap the **+** card). Sessions started in your own terminal show up too. To install globally:
+The CLI prints a local URL. Click **+** to open the drawer of Directories (on a phone, tap the **+** card). Choose **Claude Code** or **Codex**, then pick a Directory to launch it in the browser terminal. Install and sign into the chosen CLI on the machine running the office first. Add a Directory with **+ Directory**, or turn on **Settings → Show Start Directory** to list the folder you started in. Sessions started in your own terminal show up too. To install globally:
 
 ```bash
 npm install --global pixel-agents
@@ -96,9 +96,9 @@ The printed URL carries a `?token=`. Without it you can watch the office in a so
 
 ### Watch Codex sessions
 
-Open Pixel Agents in VS Code or standalone. Run `codex` in a terminal or open a local Codex session in the desktop app, then send a prompt. Pixel Agents tracks Codex in your workspace folders, the standalone start directory, and Directories you add. To include other locations, turn on **Settings → Watch All Sessions**.
+Open Pixel Agents in VS Code or standalone. To track a session you start outside the office, run `codex` in a terminal or open a local Codex session in the desktop app, then send a prompt. Pixel Agents tracks Codex in your workspace folders, the standalone start directory, and Directories you add. To include other locations, turn on **Settings → Watch All Sessions**.
 
-Keep using your terminal or the desktop app to interact with Codex. The office reads local Codex transcripts from `~/.codex/sessions` or `$CODEX_HOME/sessions` when `CODEX_HOME` is set. Codex tracking runs without installing hooks or changing your Codex settings.
+Use the browser terminal for Codex agents launched from the standalone office. For sessions started elsewhere, keep using their original terminal or the desktop app. The office reads local Codex transcripts from `~/.codex/sessions` or `$CODEX_HOME/sessions` when `CODEX_HOME` is set. Codex tracking runs without installing hooks or changing your Codex settings.
 
 ### Watch a remote Mac over SSH
 
@@ -110,7 +110,7 @@ On your laptop, open an SSH tunnel. Replace `user@remote-mac` with your usual SS
 ssh -N -o ExitOnForwardFailure=yes -L 127.0.0.1:3100:127.0.0.1:3100 user@remote-mac
 ```
 
-Keep the tunnel open, then paste the URL into your laptop's browser. Start Codex on the remote Mac over SSH or Screen Sharing. Use **Watch All Sessions** or add a Directory if Codex is working outside the directory where Pixel Agents started.
+Keep the tunnel open, then paste the private URL printed by Pixel Agents into your laptop's browser. Choose **+ → Codex → Directory** to launch a session on the remote Mac and type prompts in the browser terminal. To watch a session started separately on the remote Mac, add its Directory or enable **Watch All Sessions** if it is outside the start directory.
 
 ### On your phone, via Tailscale
 

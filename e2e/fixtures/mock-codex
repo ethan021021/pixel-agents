@@ -1,0 +1,43 @@
+#!/usr/bin/env node
+
+const { randomUUID } = require('node:crypto');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const readline = require('node:readline');
+
+if (process.argv.includes('--dangerously-bypass-approvals-and-sandbox')) {
+  process.exit(1);
+}
+
+const sessionId = randomUUID();
+const now = new Date().toISOString();
+const [year, month, day] = now.slice(0, 10).split('-');
+const codexHome = process.env.CODEX_HOME || path.join(os.homedir(), '.codex');
+const directory = path.join(codexHome, 'sessions', year, month, day);
+const rollout = path.join(
+  directory,
+  `rollout-${now.slice(0, 19).replaceAll(':', '-')}-${sessionId}.jsonl`,
+);
+
+process.stdout.write(`\x1b]0;codex | ${sessionId}\x07mock codex ready\n`);
+const terminal = readline.createInterface({ input: process.stdin });
+terminal.once('line', (line) => {
+  const records = [
+    {
+      type: 'session_meta',
+      payload: { id: sessionId, cwd: process.cwd(), source: 'cli', thread_source: 'user' },
+    },
+    { type: 'event_msg', payload: { type: 'task_started', turn_id: 'turn-1' } },
+    {
+      type: 'response_item',
+      payload: { type: 'function_call', name: 'read_file', call_id: 'call-1' },
+    },
+  ];
+  fs.mkdirSync(directory, { recursive: true });
+  fs.writeFileSync(
+    rollout,
+    records.map((record) => JSON.stringify({ timestamp: now, ...record })).join('\n') + '\n',
+  );
+  process.stdout.write(`mock codex received: ${line}\n`);
+});

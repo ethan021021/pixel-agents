@@ -12,6 +12,7 @@ import {
 } from '../constants.js';
 import type { ConsentChoice } from '../hooks/introTourState.js';
 import type { OfficeState } from '../office/engine/officeState.js';
+import { isBrowserRuntime } from '../runtime.js';
 import { useUsageBridge } from '../usage/useUsageBridge.js';
 import { DiscordIcon } from './ChangelogModal.js';
 import { computeIntroBubbleGeometry } from './introBubbleGeometry.js';
@@ -332,8 +333,10 @@ export function IntroBubble({
         {step === 'supportedAgents' && (
           <>
             <p className="text-sm m-0 mb-8">
-              Start Codex in a terminal or the desktop app and the office follows its activity. To
-              launch agents from the office, install Claude Code.
+              {isBrowserRuntime
+                ? 'Open +, choose Claude Code or Codex, and pick a Directory to launch an agent.'
+                : 'Start Codex in a terminal or the desktop app and the office follows its activity.'}{' '}
+              Install Claude Code with the command below.
             </p>
             <div className="text-sm bg-btn-bg border-2 border-border py-4 px-8 mb-8 select-all">
               {CLAUDE_CODE_INSTALL_COMMAND}

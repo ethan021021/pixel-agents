@@ -36,6 +36,8 @@ export interface TerminalReplay {
   seq: number;
   cols: number;
   rows: number;
+  /** Last title seen by the PTY mirror, available to server-side consumers. */
+  title?: string;
 }
 
 /** One agent's terminal. */

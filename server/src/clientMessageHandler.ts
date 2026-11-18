@@ -184,14 +184,20 @@ export function handleClientMessage(
       // the browser drawer (a shell running as the operator -- privileged, like
       // every message past the read-only gate above).
       if (!runtime || !ctx.ptyManager) break;
-      // Permission posture is a persisted per-host setting, never a per-launch
-      // field: the client sends only where to launch. Every launch comes from a
-      // drawer row and carries its Directory's path; no directoryPath falls
-      // back to the server cwd (launchStandaloneAgent's own default).
+      if (
+        msg.providerId !== undefined &&
+        msg.providerId !== 'claude' &&
+        msg.providerId !== 'codex'
+      ) {
+        break;
+      }
+      // Claude's permission preference is owned by the host. The client picks
+      // the CLI and Directory. An omitted path uses the server's cwd.
       const picked = rosterPick(msg.palette, getPaletteCount());
       const launched = launchStandaloneAgent(
         { store, runtime, ptyManager: ctx.ptyManager, provider: claudeProvider },
         {
+          providerId: msg.providerId,
           directoryPath: msg.directoryPath as string | undefined,
           bypassPermissions: adapter?.getSetting(KEY_BYPASS_PERMISSIONS, false) ?? false,
           palette: picked,

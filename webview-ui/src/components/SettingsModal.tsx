@@ -255,8 +255,6 @@ export function SettingsModal({
         {showAreasAvailable && (
           <Checkbox label="Show Areas" checked={showAreas} onChange={onToggleShowAreas} />
         )}
-        {/* Permission posture, set once instead of per launch: while on, the host
-          adds the CLI's skip-permissions flag to every agent it launches. */}
         <Checkbox
           label={
             <span className="flex items-center gap-4">
@@ -264,6 +262,7 @@ export function SettingsModal({
               <PixelIcon name="warning" />
             </span>
           }
+          title="Skip permission prompts when launching Claude Code"
           checked={bypassPermissions}
           onChange={onToggleBypassPermissions}
         />

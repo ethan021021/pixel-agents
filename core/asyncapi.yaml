@@ -1232,14 +1232,21 @@ components:
         type:
           const: webviewReady
 
+    LaunchProviderId:
+      type: string
+      enum: [claude, codex]
+
     LaunchAgent:
-      description: Launch a new Claude agent in a new terminal.
+      description: Launch a new agent in a new terminal.
       type: object
       additionalProperties: false
       required: [type]
       properties:
         type:
           const: launchAgent
+        providerId:
+          $ref: '#/components/schemas/LaunchProviderId'
+          description: CLI to launch. An omitted provider defaults to Claude Code.
         directoryPath:
           type: string
           description: Path of the Directory to launch into.

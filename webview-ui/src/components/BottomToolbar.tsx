@@ -1,6 +1,7 @@
 import { ROSTER_ARROW_WIDTH_PX, ROSTER_HOVER_CLOSE_DELAY_MS } from '../constants.js';
 import type { Directory } from '../hooks/useExtensionMessages.js';
 import { useHoverPin } from '../hooks/useHoverPin.js';
+import type { LaunchIntoDirectory } from '../hooks/useLaunchActions.js';
 import { popClass, usePresence } from '../hooks/usePresence.js';
 import { useRosterLaunch } from '../hooks/useRosterLaunch.js';
 import { isBrowserRuntime } from '../runtime.js';
@@ -31,7 +32,7 @@ interface BottomToolbarProps {
   terminalUnavailableReason: string | null;
   /** A Directory picked from the + drawer: launch into it (wearing `palette`
    *  when a character was picked first). */
-  onLaunch: (directory: Directory, palette?: number) => void;
+  onLaunch: LaunchIntoDirectory;
 }
 
 /** Every toolbar button's height: the labelled ones' natural height (26 px
@@ -97,9 +98,9 @@ export function BottomToolbar({
     closeDelayMs: ROSTER_HOVER_CLOSE_DELAY_MS,
   });
 
-  const handleDirectorySelect = (directory: Directory, palette?: number) => {
+  const handleDirectorySelect: LaunchIntoDirectory = (directory, palette, providerId) => {
     closeDrawer();
-    onLaunch(directory, palette);
+    onLaunch(directory, palette, providerId);
   };
 
   const rosterPanel = usePresence(menus.isRosterOpen);

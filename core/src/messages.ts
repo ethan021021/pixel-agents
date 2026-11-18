@@ -531,9 +531,12 @@ export interface WebviewReady {
 
 export interface LaunchAgent {
   type: 'launchAgent';
+  providerId?: LaunchProviderId;
   directoryPath?: string;
   palette?: number;
 }
+
+export type LaunchProviderId = 'claude' | 'codex';
 
 export interface FocusAgent {
   type: 'focusAgent';

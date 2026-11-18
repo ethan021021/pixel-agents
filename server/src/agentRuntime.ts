@@ -335,6 +335,31 @@ export class AgentRuntime {
     this.hookEventHandler.unregisterAgent(sessionId);
   }
 
+  /** The terminal identifies its own thread before its transcript is on disk. */
+  identifyTerminalTranscriptAgent(id: number, sessionId: string): boolean {
+    const agent = this.store.get(id);
+    if (
+      !agent ||
+      agent.isExternal ||
+      agent.sessionId ||
+      !transcriptProviderById(agent.providerId)
+    ) {
+      return false;
+    }
+    const duplicate = [...this.store.values()].find(
+      (other) => other.providerId === agent.providerId && other.sessionId === sessionId,
+    );
+    if (duplicate && !duplicate.isExternal) return false;
+    agent.sessionId = sessionId;
+    if (duplicate) {
+      this.knownJsonlFiles.delete(duplicate.jsonlFile);
+      this.removeAgent(duplicate.id);
+    } else {
+      this.store.persist();
+    }
+    return true;
+  }
+
   // ── Agent removal (shared cleanup) ──
 
   /** Remove an agent: stop watchers, cancel timers, delete from store. */
@@ -424,10 +449,12 @@ export class AgentRuntime {
     const agent = this.store.get(id);
     if (!agent) return;
     const provider = transcriptProviderById(agent.providerId);
-    if (provider) this.dismissedTranscriptSessions.add(`${provider.id}:${agent.sessionId}`);
+    if (provider && agent.sessionId) {
+      this.dismissedTranscriptSessions.add(`${provider.id}:${agent.sessionId}`);
+    }
     this.removeTeammates(id);
     this.subagentWatch.removeByLead(id);
-    this.dismissalTracker.dismiss(agent.jsonlFile);
+    if (agent.jsonlFile) this.dismissalTracker.dismiss(agent.jsonlFile);
     this.removeAgent(id);
   }
 
@@ -500,7 +527,12 @@ export class AgentRuntime {
   private scanTranscriptProviders(directories: HostDirectoryEntry[]): void {
     const tracked = sortedDirectories(directories);
     const watchAll = this.watchAllSessions.current;
-    if (!watchAll && tracked.length === 0) return;
+    if (
+      !watchAll &&
+      tracked.length === 0 &&
+      ![...this.store.values()].some((a) => !a.isExternal && transcriptProviderById(a.providerId))
+    )
+      return;
 
     for (const provider of transcriptProviders) {
       const knownSessions = new Map(
@@ -512,25 +544,29 @@ export class AgentRuntime {
         Date.now() - EXTERNAL_ACTIVE_THRESHOLD_MS,
       )) {
         const { sessionId, cwd, transcriptPath } = transcript;
+        let agent = knownSessions.get(sessionId);
+        const launched = agent && !agent.isExternal;
         if (
-          this.dismissedTranscriptSessions.has(`${provider.id}:${sessionId}`) ||
           this.knownJsonlFiles.has(transcriptPath) ||
-          this.dismissalTracker.isDismissed(transcriptPath)
+          (!launched &&
+            (this.dismissedTranscriptSessions.has(`${provider.id}:${sessionId}`) ||
+              this.dismissalTracker.isDismissed(transcriptPath)))
         )
           continue;
         const directory = containingDirectory(cwd, tracked);
-        if (!directory && !watchAll) continue;
+        if (!directory && !watchAll && !launched) continue;
 
-        let agent = knownSessions.get(sessionId);
         if (agent) {
-          // A rewritten transcript keeps its session id and leaves its old file behind.
-          this.stopWatching(agent.id);
-          this.knownJsonlFiles.delete(agent.jsonlFile);
+          if (agent.jsonlFile) {
+            // A rewritten transcript keeps its session id and leaves its old file behind.
+            this.stopWatching(agent.id);
+            this.knownJsonlFiles.delete(agent.jsonlFile);
+            clearAgentActivity(agent, agent.id, this.store, this.permissionTimers);
+          }
           agent.jsonlFile = transcriptPath;
           agent.projectDir = cwd;
           agent.fileOffset = 0;
           agent.lineBuffer = '';
-          clearAgentActivity(agent, agent.id, this.store, this.permissionTimers);
         } else {
           agent = createAgentState({
             id: this.store.nextAgentId.current++,
@@ -567,6 +603,7 @@ export class AgentRuntime {
     const tracked = sortedDirectories(directories);
     for (const [id, agent] of this.store) {
       if (
+        agent.isExternal &&
         transcriptProviderById(agent.providerId) &&
         !containingDirectory(agent.projectDir, tracked)
       ) {

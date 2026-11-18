@@ -1,10 +1,14 @@
 import type { ReactNode } from 'react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
+import type { LaunchProviderId } from '../../../core/src/messages.js';
 import { LAUNCH_DRAWER_PENCIL_GAP_PX } from '../constants.js';
 import type { Directory } from '../hooks/useExtensionMessages.js';
+import type { LaunchIntoDirectory } from '../hooks/useLaunchActions.js';
 import { useLongPress } from '../hooks/useLongPress.js';
+import { isBrowserRuntime } from '../runtime.js';
 import { DirectoryCharacterStrip } from './DirectoryCharacterStrip.js';
+import { Button } from './ui/Button.js';
 import { Dropdown, DropdownItem } from './ui/Dropdown.js';
 import { PixelIcon } from './ui/PixelIcon.js';
 
@@ -15,7 +19,7 @@ interface LaunchDrawerProps {
    *  of the row's mug shots pressed), else as the Directory's defaults (in
    *  its order) decide. The surface owns the send, because what else a launch
    *  does differs per surface (mobile also slides to the new terminal). */
-  onSelect: (directory: Directory, palette?: number) => void;
+  onSelect: LaunchIntoDirectory;
   /** Open the Directory modal empty (the pinned `+ Directory` row). */
   onAddDirectory: () => void;
   /** Open the Directory modal pre-filled with this entry (user-defined rows). */
@@ -32,6 +36,11 @@ export interface RosterPick {
   palette: number;
   heading: ReactNode;
 }
+
+const LAUNCH_PROVIDERS = [
+  { id: 'claude', label: 'Claude Code' },
+  { id: 'codex', label: 'Codex' },
+] as const satisfies readonly { id: LaunchProviderId; label: string }[];
 
 /**
  * The launch button's drawer: one row per Directory an agent can be launched
@@ -68,6 +77,7 @@ export function LaunchDrawer({
   className = '',
 }: LaunchDrawerProps) {
   const drawerRef = useRef<HTMLDivElement>(null);
+  const [providerId, setProviderId] = useState<LaunchProviderId>('claude');
   // The row whose pencil shows: the pencil hangs outside the drawer's right
   // border, level with the row. Kept until another row (or `+ Directory`) is
   // hovered, a scroll moves the rows, or the drawer closes — not on leaving
@@ -117,7 +127,7 @@ export function LaunchDrawer({
 
   // With a roster pick there are no mug shots: the launch wears the pick.
   const select = (directory: Directory, palette?: number) =>
-    onSelect(directory, pick ? pick.palette : palette);
+    onSelect(directory, pick ? pick.palette : palette, isBrowserRuntime ? providerId : undefined);
 
   return (
     // Open even with no Directories: `+ Directory` is always worth showing, and
@@ -130,6 +140,28 @@ export function LaunchDrawer({
       <div ref={drawerRef} data-testid="launch-drawer" className="flex flex-col min-h-0">
         {pick && (
           <div className="shrink-0 px-12 pt-2 pb-4 text-sm text-text-muted">{pick.heading}</div>
+        )}
+        {isBrowserRuntime && (
+          <div
+            role="group"
+            aria-label="Agent provider"
+            className="flex shrink-0 gap-4 px-4 pb-4"
+            onMouseEnter={() => setPencilRow(null)}
+          >
+            {LAUNCH_PROVIDERS.map(({ id, label }) => (
+              <Button
+                key={id}
+                type="button"
+                variant={providerId === id ? 'active' : 'default'}
+                size="md"
+                className="flex-1 whitespace-nowrap"
+                aria-pressed={providerId === id}
+                onClick={() => setProviderId(id)}
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
         )}
         {/* DropdownItem hard-resets to border-none, so the separator lives on
             this wrapper. Pinned: it never scrolls away with the rows. */}

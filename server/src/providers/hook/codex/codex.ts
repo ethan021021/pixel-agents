@@ -1,6 +1,8 @@
 import type { TranscriptProvider } from '../../../../../core/src/provider.js';
 import { parseCodexTranscriptLine, scanCodexTranscripts } from './codexTranscript.js';
 
+export const CODEX_PROVIDER_ID = 'codex';
+
 const toolStatuses = new Map([
   ['exec_command', 'Running command'],
   ['write_stdin', 'Checking command'],
@@ -17,7 +19,7 @@ const toolStatuses = new Map([
 ]);
 
 export const codexProvider: TranscriptProvider = {
-  id: 'codex',
+  id: CODEX_PROVIDER_ID,
   readingTools: new Set([
     'read_file',
     'list_directory',

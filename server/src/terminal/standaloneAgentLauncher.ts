@@ -2,13 +2,8 @@
  * Standalone agent launch: the PTY-backed counterpart to the VS Code adapter's
  * launchNewTerminal().
  *
- * This deliberately MIRRORS adapters/vscode/agentManager.ts rather than sharing
- * a core seam with it: that function imports `vscode` (so it can't move into
- * server/) and takes twelve positional dependencies, so unifying the two would
- * mean rewriting the whole VS Code lifecycle -- out of scope here and a certain
- * conflict with the sibling branches. What IS shared is the thing that matters:
- * both call provider.buildLaunchCommand(), so the launched command is identical.
- * Unifying the hosting is deferred (docs/design/standalone-terminal.md).
+ * Claude's launch command is shared with the VS Code adapter. Codex supplies
+ * its own session ID and announces it through the standalone PTY.
  */
 
 import * as crypto from 'crypto';
@@ -27,6 +22,14 @@ import { directoryAt } from '../directories.js';
 import { startFileWatching } from '../fileWatcher.js';
 import { directoryNameFor, hostDirectory } from '../hostDirectory.js';
 import { assignPaletteIfNeeded } from '../paletteAssigner.js';
+import { CODEX_PROVIDER_ID } from '../providers/hook/codex/codex.js';
+import {
+  buildCodexLaunchCommand,
+  codexSessionIdFromTitle,
+  codexTerminalTitles,
+  isInheritedCodexSessionEnv,
+} from '../providers/hook/codex/codexTerminal.js';
+import { transcriptProviderById } from '../providers/index.js';
 import type { AgentState } from '../types.js';
 import { inheritedEnv, terminalEnv } from './terminalEnv.js';
 import type { TerminalSession, TerminalSessions } from './terminalSessions.js';
@@ -39,6 +42,7 @@ export interface LaunchStandaloneAgentDeps {
 }
 
 export interface LaunchStandaloneAgentOptions {
+  providerId?: 'claude' | 'codex';
   /** Path of the Directory to launch into. Defaults to the server's cwd, which
    *  is also the Directory standalone contributes as its host entry. */
   directoryPath?: string;
@@ -57,7 +61,7 @@ export interface LaunchStandaloneAgentOptions {
 }
 
 /**
- * Spawn a Claude agent in a PTY and register it with the runtime.
+ * Spawn an interactive agent in a PTY and register it with the runtime.
  * Returns the new agent id, or null when the terminal is unavailable.
  */
 export function launchStandaloneAgent(
@@ -72,26 +76,32 @@ export function launchStandaloneAgent(
   }
 
   const cwd = options.directoryPath ?? process.cwd();
-  const sessionId = options.resume?.sessionId ?? crypto.randomUUID();
+  const codex = options.providerId === CODEX_PROVIDER_ID;
+  if (codex && options.resume) return null;
 
-  const launch = provider.buildLaunchCommand?.(sessionId, cwd, {
-    bypassPermissions: options.bypassPermissions,
-    resume: options.resume !== undefined,
-  });
+  const sessionId = codex ? '' : (options.resume?.sessionId ?? crypto.randomUUID());
+  const launch = codex
+    ? buildCodexLaunchCommand()
+    : provider.buildLaunchCommand?.(sessionId, cwd, {
+        bypassPermissions: options.bypassPermissions,
+        resume: options.resume !== undefined,
+      });
   if (!launch) {
     console.error('[Pixel Agents] Terminal: provider.buildLaunchCommand is not implemented');
     return null;
   }
 
-  const dirs = provider.getSessionDirs?.(cwd) ?? [];
-  if (dirs.length === 0) {
+  const expectedDir = codex ? undefined : provider.getSessionDirs?.(cwd)?.[0];
+  if (!codex && !expectedDir) {
     console.error('[Pixel Agents] Terminal: provider returned no session dirs');
     return null;
   }
   // A resumed session's transcript is wherever the CLI filed it (under the
   // Directory's resolved path, when it was reached through a symlink).
-  const jsonlFile = options.resume?.transcript ?? path.join(dirs[0], `${sessionId}.jsonl`);
-  const projectDir = path.dirname(jsonlFile);
+  const jsonlFile = expectedDir
+    ? (options.resume?.transcript ?? path.join(expectedDir, `${sessionId}.jsonl`))
+    : '';
+  const projectDir = codex ? path.resolve(cwd) : path.dirname(jsonlFile);
 
   const id = store.nextAgentId.current++;
 
@@ -112,7 +122,7 @@ export function launchStandaloneAgent(
     // it was assigned in the modal actually match. Falls back to the basename
     // for a cwd that is no Directory at all.
     directoryName: directory?.name ?? directoryNameFor(cwd),
-    providerId: provider.id,
+    providerId: codex ? CODEX_PROVIDER_ID : provider.id,
     seatId: options.resume?.seatId,
   });
   if (options.resume) {
@@ -138,7 +148,10 @@ export function launchStandaloneAgent(
       cwd,
       // The locale too (terminalEnv), here as well as in the PTY: a PTY host
       // started by an older server spawns with the env it is handed.
-      env: terminalEnv({ ...inheritedEnv(provider), ...launch.env }),
+      env: terminalEnv({
+        ...inheritedEnv(codex ? { isInheritedSessionEnv: isInheritedCodexSessionEnv } : provider),
+        ...launch.env,
+      }),
       cols: options.cols,
       rows: options.rows,
     });
@@ -152,7 +165,7 @@ export function launchStandaloneAgent(
   admitTerminalAgent(deps, agent, session);
   // A fresh session starts with an empty context: a full gauge from the spawn on.
   // A resumed one keeps its gauge, read from its transcript.
-  if (!options.resume) clearContextUsage(id, store);
+  if (!options.resume && !codex) clearContextUsage(id, store);
   runtime.activeAgentId.current = id;
   store.persist();
 
@@ -193,10 +206,11 @@ export function reattachTerminalAgents(deps: LaunchStandaloneAgentDeps): number[
 
     // Restored from where the transcript really is: the finished-spawn check
     // must read the same file the agent will watch.
+    const transcriptProvider = transcriptProviderById(record.providerId);
     const agent = createAgentState({
-      ...restoredAgentInit(relocatedRecord(deps.provider, record)),
+      ...restoredAgentInit(transcriptProvider ? record : relocatedRecord(deps.provider, record)),
       isExternal: false,
-      providerId: deps.provider.id,
+      providerId: transcriptProvider?.id ?? deps.provider.id,
     });
     try {
       agent.fileOffset = fs.statSync(agent.jsonlFile).size;
@@ -204,7 +218,7 @@ export function reattachTerminalAgents(deps: LaunchStandaloneAgentDeps): number[
       // No transcript yet: it starts from the beginning once it appears.
     }
     assignPaletteIfNeeded(agent, store);
-    admitTerminalAgent(deps, agent, session);
+    admitTerminalAgent(deps, agent, session, true);
     restored.push(id);
     console.log(`[Pixel Agents] Terminal: Agent ${id} - reattached (pid ${session.pid})`);
   }
@@ -248,13 +262,14 @@ function admitTerminalAgent(
   deps: LaunchStandaloneAgentDeps,
   agent: AgentState,
   session: TerminalSession,
+  reattaching = false,
 ): void {
   const { store, runtime } = deps;
   const id = agent.id;
 
   // Pre-register the expected JSONL so the project scanner doesn't mistake it
   // for a /clear file, exactly as the VS Code path does.
-  runtime.knownJsonlFiles.add(agent.jsonlFile);
+  if (agent.jsonlFile) runtime.knownJsonlFiles.add(agent.jsonlFile);
   store.set(id, agent);
   runtime.registerAgent(agent.sessionId, id);
 
@@ -269,12 +284,38 @@ function admitTerminalAgent(
     console.log(`[Pixel Agents] Terminal: Agent ${id} - exited (code ${exit.exitCode})`);
     store.broadcast({ type: 'terminalSessionClosed', agentId: id, exitCode: exit.exitCode });
     if (store.has(id)) {
-      runtime.unregisterAgent(agent.sessionId);
+      if (!transcriptProviderById(agent.providerId)) runtime.unregisterAgent(agent.sessionId);
       runtime.closeAgent(id);
     }
   });
 
-  startJsonlPoll(deps, id, agent);
+  if (agent.providerId === CODEX_PROVIDER_ID && !agent.sessionId) {
+    trackCodexTerminalId(deps, agent, session, reattaching);
+  } else if (agent.jsonlFile) {
+    startJsonlPoll(deps, id, agent);
+  }
+}
+
+function trackCodexTerminalId(
+  { runtime }: LaunchStandaloneAgentDeps,
+  agent: AgentState,
+  session: TerminalSession,
+  reattaching: boolean,
+): void {
+  const readTitle = codexTerminalTitles();
+  const bind = (sessionId: string | undefined) => {
+    if (sessionId && runtime.identifyTerminalTranscriptAgent(agent.id, sessionId)) {
+      stopReading();
+    }
+  };
+  const stopReading = session.onData((chunk) => bind(readTitle(chunk)));
+  if (reattaching) {
+    // The server may have shut down between launching and observing the
+    // title. The PTY host's mirror still has it even after that output passed.
+    void session.replay().then(({ title }) => {
+      if (title) bind(codexSessionIdFromTitle(title));
+    });
+  }
 }
 
 /**

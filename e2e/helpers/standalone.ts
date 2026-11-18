@@ -13,6 +13,7 @@ const STANDALONE_CLI = path.resolve(REPO_ROOT, 'dist', 'cli.js');
 const MOCK_CLAUDE_PATH = path.join(REPO_ROOT, 'e2e/fixtures/mock-claude');
 const MOCK_CLAUDE_CMD_PATH = path.join(REPO_ROOT, 'e2e/fixtures/mock-claude.cmd');
 const MOCK_CLAUDE_RUNNER_PATH = path.join(REPO_ROOT, 'e2e/fixtures/mock-claude-runner.cjs');
+const MOCK_CODEX_PATH = path.join(REPO_ROOT, 'e2e/fixtures/mock-codex');
 const TAIL_FOLLOW_PATH = path.join(REPO_ROOT, 'e2e/fixtures/tail-follow.cjs');
 
 export interface RecordedServerMessage {
@@ -59,6 +60,8 @@ export interface LaunchStandaloneOptions {
    *  host's PATH, so agents launched from the browser spawn the scenario
    *  runner in the host's PTY instead of a real Claude CLI. */
   mockClaude?: boolean;
+  /** Put the interactive Codex fixture on the host's PATH. */
+  mockCodex?: boolean;
   /** Browser viewport (default 1280×800, the desktop shell). A phone-sized
    *  viewport renders the mobile shell instead. */
   viewport?: { width: number; height: number };
@@ -122,9 +125,7 @@ async function waitForHttpOk(url: string): Promise<void> {
  * VS Code fixture's bin dir (helpers/launch.ts). Returns the bin dir to
  * prepend to the host's PATH.
  */
-function installMockClaudeBin(homeDir: string): string {
-  const binDir = path.join(homeDir, 'mock-bin');
-  fs.mkdirSync(binDir, { recursive: true });
+function installMockClaudeBin(binDir: string): void {
   const binaryPath = path.join(binDir, process.platform === 'win32' ? 'claude.cmd' : 'claude');
   if (process.platform === 'win32') {
     fs.copyFileSync(MOCK_CLAUDE_CMD_PATH, binaryPath);
@@ -134,7 +135,6 @@ function installMockClaudeBin(homeDir: string): string {
   }
   fs.copyFileSync(MOCK_CLAUDE_RUNNER_PATH, path.join(binDir, 'mock-claude-runner.cjs'));
   fs.copyFileSync(TAIL_FOLLOW_PATH, path.join(binDir, 'tail-follow.cjs'));
-  return binDir;
 }
 
 /**
@@ -149,6 +149,7 @@ function spawnStandaloneHost(args: {
   workspaceDir: string;
   cliArgs?: string[];
   mockClaude?: boolean;
+  mockCodex?: boolean;
 }): ChildProcessWithoutNullStreams {
   if (!fs.existsSync(STANDALONE_CLI)) {
     throw new Error(
@@ -159,11 +160,18 @@ function spawnStandaloneHost(args: {
     ...process.env,
     HOME: args.homeDir,
     USERPROFILE: args.homeDir,
+    CODEX_HOME: path.join(args.homeDir, '.codex'),
   };
-  if (args.mockClaude) {
-    // The host's PTYs inherit its env, so a browser-launched `claude` resolves
-    // to the mock. PIXEL_AGENTS_NODE_BIN keeps the wrapper on this exact node.
-    const binDir = installMockClaudeBin(args.homeDir);
+  if (args.mockClaude || args.mockCodex) {
+    // The host's PTYs inherit its env, so browser launches resolve to the fixtures.
+    const binDir = path.join(args.homeDir, 'mock-bin');
+    fs.mkdirSync(binDir, { recursive: true });
+    if (args.mockClaude) installMockClaudeBin(binDir);
+    if (args.mockCodex) {
+      const binaryPath = path.join(binDir, 'codex');
+      fs.copyFileSync(MOCK_CODEX_PATH, binaryPath);
+      fs.chmodSync(binaryPath, 0o755);
+    }
     env.PATH = `${binDir}${path.delimiter}${process.env.PATH ?? ''}`;
     env.PIXEL_AGENTS_NODE_BIN = process.execPath;
   }
@@ -333,6 +341,7 @@ export async function launchStandalone(
       workspaceDir,
       cliArgs: options.cliArgs,
       mockClaude: options.mockClaude,
+      mockCodex: options.mockCodex,
     });
     proc.stdout.on('data', (chunk) => {
       hostStdout += chunk.toString();

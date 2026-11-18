@@ -1,5 +1,6 @@
 import { AGENT_CARD_HEIGHT_PX, ROSTER_ARROW_WIDTH_PX } from '../constants.js';
 import type { Directory } from '../hooks/useExtensionMessages.js';
+import type { LaunchIntoDirectory } from '../hooks/useLaunchActions.js';
 import { useRosterLaunch } from '../hooks/useRosterLaunch.js';
 import { isTypingInTerminal } from '../terminal/terminalDom.js';
 import type { AgentAppearance, TabStatus } from './AgentCard.js';
@@ -20,7 +21,7 @@ interface MobileAgentBarProps {
   onCloseAgent: (agentId: number) => void;
   /** Launch into a Directory picked from the + card's drawer, wearing
    *  `palette` when the launch started from the roster. */
-  onLaunchDirectory: (directory: Directory, palette?: number) => void;
+  onLaunchDirectory: LaunchIntoDirectory;
   /** Directories offered by the launch drawer (tap on the + card). */
   directories: Directory[];
   /** Drawer's pinned `+ Directory` row — opens the Directory modal empty. */
@@ -121,6 +122,7 @@ export function MobileAgentBar({
               // A long press must not open the OS callout menu over the drawer.
               onContextMenu={(e) => e.preventDefault()}
               disabled={!canLaunch}
+              aria-label="New agent"
               title={
                 canLaunch ? 'Launch agent' : (launchUnavailableReason ?? 'Terminal unavailable')
               }
@@ -161,9 +163,9 @@ export function MobileAgentBar({
             isOpen={menus.isDrawerOpen}
             directories={directories}
             pick={menus.pendingPick}
-            onSelect={(directory, palette) => {
+            onSelect={(directory, palette, providerId) => {
               closeDrawer();
-              onLaunchDirectory(directory, palette);
+              onLaunchDirectory(directory, palette, providerId);
             }}
             onAddDirectory={() => {
               closeDrawer();

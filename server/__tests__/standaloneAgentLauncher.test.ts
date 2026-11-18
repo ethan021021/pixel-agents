@@ -6,11 +6,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HookProvider } from '../../core/src/provider.js';
 import { AgentRuntime } from '../src/agentRuntime.js';
 import { AgentStateStore } from '../src/agentStateStore.js';
-import { JSONL_POLL_INTERVAL_MS } from '../src/constants.js';
+import {
+  EXTERNAL_SCAN_INTERVAL_MS,
+  FILE_WATCHER_POLL_INTERVAL_MS,
+  JSONL_POLL_INTERVAL_MS,
+} from '../src/constants.js';
 import { claudeProvider } from '../src/providers/hook/claude/claude.js';
 import type { IPty, PtyModule, PtySpawnOptions } from '../src/terminal/ptyModule.js';
 import { PtySessionManager } from '../src/terminal/ptySessionManager.js';
-import { launchStandaloneAgent } from '../src/terminal/standaloneAgentLauncher.js';
+import {
+  launchStandaloneAgent,
+  reattachTerminalAgents,
+} from '../src/terminal/standaloneAgentLauncher.js';
 import { sessionMarkersUnset } from '../src/terminal/terminalEnv.js';
 
 /**
@@ -26,9 +33,12 @@ import { sessionMarkersUnset } from '../src/terminal/terminalEnv.js';
 class FakePty implements IPty {
   readonly pid = 4242;
   killSignals: Array<string | undefined> = [];
+  private dataListener: ((chunk: string) => void) | null = null;
   private exitListener: ((e: { exitCode: number; signal?: number }) => void) | null = null;
 
-  onData(): void {}
+  onData(listener: (chunk: string) => void): void {
+    this.dataListener = listener;
+  }
   onExit(listener: (e: { exitCode: number; signal?: number }) => void): void {
     this.exitListener = listener;
   }
@@ -41,6 +51,10 @@ class FakePty implements IPty {
   /** Test driver: simulate the process exiting on its own. */
   exit(exitCode = 0): void {
     this.exitListener?.({ exitCode });
+  }
+
+  emit(chunk: string): void {
+    this.dataListener?.(chunk);
   }
 }
 
@@ -98,12 +112,125 @@ describe('launchStandaloneAgent', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllEnvs();
     runtime.dispose();
     store.dispose();
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
 
   // ── Successful launch ────────────────────────────────────────
+
+  it('associates concurrent Codex launches with their own rollouts in the same Directory', () => {
+    vi.useFakeTimers();
+    vi.stubEnv('CODEX_HOME', tempDir);
+    vi.stubEnv('CODEX_THREAD_ID', 'inherited-thread');
+    vi.stubEnv('CODEX_SESSION_ID', 'inherited-session');
+    const harness = workingPtyManager();
+    const cwd = path.join(tempDir, 'workspace');
+    fs.mkdirSync(cwd);
+    runtime.startExternalScanning(projectDir, () => [{ path: cwd, name: 'Workspace' }]);
+
+    const first = launch(harness, {
+      directoryPath: cwd,
+      providerId: 'codex',
+      bypassPermissions: true,
+    })!;
+    const second = launch(harness, { directoryPath: cwd, providerId: 'codex' })!;
+    const firstSessionId = '11111111-2222-3333-4444-555555555555';
+    const secondSessionId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+    const externalSessionId = '01010101-0101-0101-0101-010101010101';
+    const folder = path.join(tempDir, 'sessions', '2026', '11', '18');
+    fs.mkdirSync(folder, { recursive: true });
+    const writeRollout = (id: string) => {
+      const file = path.join(folder, `rollout-${id}.jsonl`);
+      fs.writeFileSync(
+        file,
+        JSON.stringify({ type: 'session_meta', payload: { id, cwd, source: 'cli' } }) +
+          '\n' +
+          JSON.stringify({ type: 'event_msg', payload: { type: 'task_started' } }) +
+          '\n',
+      );
+      return file;
+    };
+    expect(harness.spawnArgs[0]).toMatchObject({
+      file: 'codex',
+      args: ['--no-alt-screen', '-c', 'tui.terminal_title=["app-name","thread"]'],
+      options: { cwd },
+    });
+    expect(harness.spawnArgs[0].options.env).not.toHaveProperty('CODEX_THREAD_ID');
+    expect(harness.spawnArgs[0].options.env).not.toHaveProperty('CODEX_SESSION_ID');
+    expect(broadcasts).toContainEqual({ type: 'terminalSessionOpened', agentId: first });
+    expect(broadcasts).toContainEqual({ type: 'terminalSessionOpened', agentId: second });
+
+    harness.spawned[0].emit(`codex | ${externalSessionId}\n`);
+    expect(store.get(first)?.sessionId).toBe('');
+    harness.spawned[1].emit(`\x1b]0;codex | ${secondSessionId}\x07`);
+    harness.spawned[0].emit('\x1b]0;cod');
+    harness.spawned[0].emit(`ex | ${firstSessionId}\x07`);
+    expect(store.get(first)?.sessionId).toBe(firstSessionId);
+    expect(store.get(second)?.sessionId).toBe(secondSessionId);
+
+    writeRollout(externalSessionId);
+    const secondFile = writeRollout(secondSessionId);
+    const firstFile = writeRollout(firstSessionId);
+    vi.advanceTimersByTime(EXTERNAL_SCAN_INTERVAL_MS);
+    expect(store.size).toBe(3);
+    expect(store.get(first)).toMatchObject({
+      jsonlFile: firstFile,
+      isExternal: false,
+      turnActive: true,
+    });
+    expect(store.get(second)).toMatchObject({
+      jsonlFile: secondFile,
+      isExternal: false,
+      turnActive: true,
+    });
+    expect(
+      [...store.values()].find((agent) => agent.sessionId === externalSessionId)?.isExternal,
+    ).toBe(true);
+
+    fs.appendFileSync(
+      firstFile,
+      JSON.stringify({ type: 'event_msg', payload: { type: 'task_complete' } }) + '\n',
+    );
+    vi.advanceTimersByTime(FILE_WATCHER_POLL_INTERVAL_MS);
+    expect(store.get(first)?.isWaiting).toBe(true);
+    expect(store.get(second)?.turnActive).toBe(true);
+    runtime.setWatchAllSessions(false, []);
+    expect([...store.keys()]).toEqual([first, second]);
+
+    harness.spawned[0].exit();
+    expect(store.has(first)).toBe(false);
+    vi.advanceTimersByTime(EXTERNAL_SCAN_INTERVAL_MS);
+    expect(store.has(first)).toBe(false);
+  });
+
+  it('recovers the Codex thread ID from an existing terminal after server reattach', async () => {
+    const harness = workingPtyManager();
+    const id = 42;
+    const sessionId = '11111111-2222-3333-4444-555555555555';
+    const session = harness.manager.create({
+      agentId: id,
+      command: 'codex',
+      args: [],
+      cwd: tempDir,
+      env: {},
+    });
+    harness.spawned[0].emit(`\x1b]0;codex | ${sessionId}\x07`);
+    vi.spyOn(harness.manager, 'survivors').mockReturnValue([session]);
+    vi.spyOn(store, 'loadPersistedAgents').mockReturnValue([
+      { id, providerId: 'codex', jsonlFile: '', projectDir: tempDir, terminalName: '' },
+    ]);
+
+    expect(
+      reattachTerminalAgents({ store, runtime, ptyManager: harness.manager, provider: provider() }),
+    ).toEqual([id]);
+    await vi.waitFor(() => {
+      expect(store.get(id)).toMatchObject({ sessionId, providerId: 'codex', isExternal: false });
+    });
+    expect(harness.manager.get(id)).toBe(session);
+    expect(harness.spawnArgs).toHaveLength(1);
+  });
 
   it('resumes a past session: same id, --resume, its transcript read from the end, its old seat asked for', () => {
     const harness = workingPtyManager();
