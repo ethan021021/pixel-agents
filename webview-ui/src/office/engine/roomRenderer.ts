@@ -12,11 +12,11 @@ import { getPetSprites } from '../sprites/petSpriteData.js';
 import { getCachedSprite, getOutlineSprite } from '../sprites/spriteCache.js';
 import { BUBBLE_HEART_SPRITE } from '../sprites/spriteData.js';
 import { CharacterState, TILE_SIZE } from '../types.js';
-import { renderMatrixEffect } from './matrixEffect.js';
+import { roomMatrixSprite } from './matrixEffect.js';
 import type { OfficeState } from './officeState.js';
 import { getPetSpriteData } from './petEntity.js';
 import { isGhostHeadlessAgentsEnabled, renderVisitorMarker } from './renderer.js';
-import { roomCharacterFrame, roomCharacterHeadroom } from './roomCharacterFrame.js';
+import { roomCharacterFrame } from './roomCharacterFrame.js';
 import { roomFurnitureArt, roomFurnitureSpriteBounds, roomSeatArt } from './roomFurnitureArt.js';
 import { drawRoomShell, drawRoomTarget, roomPolygon } from './roomShell.js';
 
@@ -49,6 +49,30 @@ function footShadow(ctx: CanvasRenderingContext2D, foot: RoomPoint, zoom: number
   ctx.fillStyle = ROOM_COLORS.contactShadow;
   ctx.fillRect(x - 5 * zoom, y - zoom, 10 * zoom, 2 * zoom);
   ctx.fillRect(x - 3 * zoom, y - 2 * zoom, 6 * zoom, 4 * zoom);
+}
+
+function drawCharacterBitmap(
+  ctx: CanvasRenderingContext2D,
+  image: HTMLCanvasElement,
+  x: number,
+  y: number,
+  pixelZoom: number,
+): void {
+  // Canvas engines can choose either texel when a device-pixel center sits
+  // directly between two. Bias the source sample to the higher index used by
+  // hit testing. The destination bounds still share the same foot and hip.
+  const inset = Number.isInteger(pixelZoom) ? 0 : 1 / 16;
+  ctx.drawImage(
+    image,
+    inset,
+    inset,
+    image.width - inset,
+    image.height - inset,
+    x,
+    y,
+    image.width * pixelZoom,
+    image.height * pixelZoom,
+  );
 }
 
 /** Visitor view of the office layout, with original isometric sprites. */
@@ -99,17 +123,13 @@ export function renderRoom(
     });
   }
   for (const character of office.getCharacters()) {
-    const {
-      pixels: data,
-      foot,
-      depth,
-      x,
-      y,
-      height,
-      width,
-      cushion,
-    } = roomCharacterFrame(character, projection, zoom, roomSeatArt(office, character.seatId));
-    const image = getCachedSprite(data, zoom);
+    const frame = roomCharacterFrame(
+      character,
+      projection,
+      zoom,
+      roomSeatArt(office, character.seatId),
+    );
+    const { pixels, foot, depth, x, y, width, headY, pixelZoom, nativeScale, cushion } = frame;
     const selected = character.id === office.selectedAgentId;
     const hovered = character.id === office.hoveredAgentId;
     const alpha =
@@ -123,21 +143,32 @@ export function renderRoom(
         ctx.save();
         ctx.globalAlpha = alpha;
         if (character.matrixEffect) {
-          renderMatrixEffect(ctx, character, data, x, y, zoom);
+          drawCharacterBitmap(
+            ctx,
+            roomMatrixSprite(character, pixels, nativeScale),
+            x,
+            y,
+            pixelZoom,
+          );
         } else {
           if (selected || hovered) {
             ctx.globalAlpha = selected ? SELECTED_OUTLINE_ALPHA : HOVERED_OUTLINE_ALPHA;
-            ctx.drawImage(getCachedSprite(getOutlineSprite(data), zoom), x - zoom, y - zoom);
+            drawCharacterBitmap(
+              ctx,
+              getCachedSprite(getOutlineSprite(pixels), 1),
+              x - pixelZoom,
+              y - pixelZoom,
+              pixelZoom,
+            );
             ctx.globalAlpha = alpha;
           }
-          ctx.drawImage(image, x, y);
+          drawCharacterBitmap(ctx, getCachedSprite(pixels, 1), x, y, pixelZoom);
         }
         ctx.restore();
       },
     });
     if (character.id === VISITOR_ID) {
-      const head = y + height - roomCharacterHeadroom(data) * zoom;
-      overlays.push(() => renderVisitorMarker(ctx, x + width / 2, head, zoom));
+      overlays.push(() => renderVisitorMarker(ctx, x + width / 2, headY, zoom));
     }
     if (cushion) occupied.add(cushion.chair);
   }

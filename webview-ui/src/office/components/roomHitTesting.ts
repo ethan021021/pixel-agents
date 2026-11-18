@@ -31,7 +31,7 @@ export function roomActorAt(
   for (const ch of office.getCharacters()) {
     if (ch.id === GREETER_ID || ch.matrixEffect === 'despawn') continue;
     const frame = roomCharacterFrame(ch, projection, zoom, roomSeatArt(office, ch.seatId));
-    if (frame.depth < depth || !pickPixel(frame.pixels, frame, zoom, x, y)) continue;
+    if (frame.depth < depth || !pickPixel(frame.pixels, frame, frame.pixelZoom, x, y)) continue;
     const chair = frame.cushion?.chair;
     const front = chair?.model?.sprite.seating?.foreground;
     if (chair && front) {
@@ -71,8 +71,10 @@ function pickPixel(
   y: number,
   mirror = false,
 ): boolean {
-  const col = Math.floor((x - origin.x) / zoom);
-  const row = Math.floor((y - origin.y) / zoom);
+  // At odd zooms the 2× character is resampled onto the device grid. Pick
+  // the texel under the center of the painted pixel, as nearest-neighbor does.
+  const col = Math.floor((Math.floor(x) + 0.5 - origin.x) / zoom);
+  const row = Math.floor((Math.floor(y) + 0.5 - origin.y) / zoom);
   return !!pixels[row]?.[mirror ? pixels[0].length - 1 - col : col];
 }
 

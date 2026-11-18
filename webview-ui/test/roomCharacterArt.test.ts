@@ -35,8 +35,8 @@ describe('room character art', () => {
     const original = structuredClone(source);
     const room = roomCharacterSprite(source, Direction.RIGHT, false);
 
-    expect(room).toHaveLength(39);
-    expect(room.every((row) => row.length === 18)).toBe(true);
+    expect(room).toHaveLength(78);
+    expect(room.every((row) => row.length === 36)).toBe(true);
     expect(room.flat()).toEqual(expect.arrayContaining([skin, shirt, hair, trousers, pin]));
     expect(source).toEqual(original);
     expect(roomCharacterSprite(source, Direction.RIGHT, false)).toBe(room);
@@ -50,8 +50,10 @@ describe('room character art', () => {
     expect(bottom(first)).toBe(bottom(centered));
     expect(bottom(second)).toBe(bottom(centered));
     expect(first).not.toEqual(second);
-    expect(roomCharacterSprite(source, Direction.UP, false).slice(12, 18)).not.toEqual(
-      centered.slice(12, 18),
+    // The forward leg passes through the hip before dropping toward the floor.
+    expect(second.slice(53, 62).every((row) => row[24])).toBe(true);
+    expect(roomCharacterSprite(source, Direction.UP, false).slice(24, 36)).not.toEqual(
+      centered.slice(24, 36),
     );
   });
 
@@ -63,8 +65,12 @@ describe('room character art', () => {
     const open = roomCharacterSprite(source, Direction.RIGHT, false);
     const closed = roomCharacterSprite(source, Direction.RIGHT, false, { blink: true });
 
-    expect(open[14][9]).toBe(iris);
-    expect(closed[14][9]).not.toBe(iris);
+    const eyeRows = open.map((row) => row.indexOf(iris));
+    const farEye = eyeRows.findIndex((x) => x >= 0);
+    const nearEye = eyeRows.findIndex((x) => x >= 0 && x < eyeRows[farEye]);
+    expect(farEye).toBeGreaterThan(0);
+    expect(nearEye).toBeGreaterThan(farEye);
+    expect(closed.flat()).not.toContain(iris);
     expect(closed.map((row) => row.map(Boolean))).toEqual(open.map((row) => row.map(Boolean)));
   });
 
@@ -82,13 +88,13 @@ describe('room character art', () => {
       gesture: 'read',
     });
 
-    expect(seated).toHaveLength(35);
+    expect(seated).toHaveLength(70);
     expect(seated[ROOM_SEATED_HIP.y][ROOM_SEATED_HIP.x]).toBeTruthy();
     // The far shoe projects past the near one and lands two room pixels higher.
-    expect(seated.findLastIndex((row) => row.slice(15).some(Boolean))).toBe(31);
-    expect(bottom(seated)).toBe(33);
-    expect(typing.slice(27)).toEqual(seated.slice(27));
-    expect(reading.slice(27)).toEqual(seated.slice(27));
+    expect(seated.findLastIndex((row) => row.slice(30).some(Boolean))).toBe(63);
+    expect(bottom(seated)).toBe(67);
+    expect(typing.slice(54)).toEqual(seated.slice(54));
+    expect(reading.slice(54)).toEqual(seated.slice(54));
     expect(typing).not.toEqual(seated);
     expect(reading).not.toEqual(seated);
   });
@@ -100,9 +106,9 @@ describe('room character art', () => {
     const left = roomCharacterSprite(frame, Direction.LEFT, true, { standing });
 
     expect(right[ROOM_SEATED_HIP.y][ROOM_SEATED_HIP.x]).toBeTruthy();
-    expect(right.findLastIndex((row) => row[15])).toBe(25);
-    expect(right.every((row) => !row[16] && !row[17])).toBe(true);
-    expect(bottom(right)).toBe(27);
+    expect(right.findLastIndex((row) => row.slice(30).some(Boolean))).toBe(51);
+    expect(right.every((row) => !row[32] && !row[33] && !row[34] && !row[35])).toBe(true);
+    expect(bottom(right)).toBe(55);
     expect(left).toEqual(right.map((row) => [...row].reverse()));
   });
 
@@ -125,10 +131,10 @@ describe('room character art', () => {
     const wave = roomCharacterSprite(source, Direction.RIGHT, false, { gesture: 'wave', beat: 0 });
     const tilt = roomCharacterSprite(source, Direction.RIGHT, false, { gesture: 'wave', beat: 1 });
 
-    expect(wave[15][1]).toBe(skin);
-    expect(still[15][1]).toBe('');
-    expect(tilt[15]).not.toEqual(wave[15]);
-    expect(wave.slice(28)).toEqual(still.slice(28));
-    expect(tilt.slice(28)).toEqual(still.slice(28));
+    expect(wave[31].slice(0, 6)).toContain(skin);
+    expect(still[31].slice(0, 6)).not.toContain(skin);
+    expect(tilt[31]).not.toEqual(wave[31]);
+    expect(wave.slice(56)).toEqual(still.slice(56));
+    expect(tilt.slice(56)).toEqual(still.slice(56));
   });
 });

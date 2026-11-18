@@ -1,11 +1,13 @@
 import { rgbaToHex } from '../../../../core/src/assets/colorUtils.js';
 import { CHAR_FRAME_H, CHAR_FRAME_W } from '../../../../core/src/assets/constants.js';
 import { Direction, type SpriteData } from '../types.js';
+import { drawRoomCharacterHead } from './roomCharacterHead.js';
 
-const FRAME_W = 18;
-const STANDING_H = 39;
-export const ROOM_SEATED_FRAME_HEIGHT = 35;
-export const ROOM_SEATED_HIP = { x: 9, y: 24 } as const;
+export const ROOM_CHARACTER_NATIVE_SCALE = 2;
+const FRAME_W = 36;
+const STANDING_H = 78;
+export const ROOM_SEATED_FRAME_HEIGHT = 70;
+export const ROOM_SEATED_HIP = { x: 18, y: 48 } as const;
 
 export interface RoomCharacterPose {
   standing?: SpriteData;
@@ -22,49 +24,29 @@ const cache = new WeakMap<
 >();
 
 type Mask = readonly string[];
-type Paint = (rows: Mask, x: number, y: number, colors: Record<string, string>) => void;
+type Paint = (
+  rows: Mask,
+  x: number,
+  y: number,
+  colors: Record<string, string>,
+  native?: boolean,
+) => void;
 
-// Drawn in room coordinates, facing screen right. The two shoulders, forearms,
-// toes, and cheek each keep their position on the same diagonal.
-const FACE = [
-  '  oooooo    ',
-  ' oSSSSSSo   ',
-  'oSSSSSSSSo  ',
-  'oSSSSSSSSSo ',
-  'osSSSSSbSbo ',
-  'oAsSSSSbSeo ',
-  'oAsSSSSESSo ',
-  ' oAsSSSSSSHo',
-  ' oAAsSSShSo ',
-  '  oAAsmmSo  ',
-  '   ooAAoo   ',
-];
-const BACK_HEAD = [
-  '  oooooo    ',
-  ' ohhhhhho   ',
-  'ohhhhhhhho  ',
-  'ohhhhhhhhho ',
-  'ohhhhhhhhho ',
-  'ohhhhhhhhho ',
-  'ohhhhhhhAho ',
-  ' ohhhhhoAho ',
-  '  oohhhoAo  ',
-  '   ooooAo   ',
-  '      oo    ',
-];
+// The shoulder line, hem, and feet follow the same three-quarter axis.
 const COAT = [
-  '    oAAo     ',
-  '  ooCCcoo    ',
-  ' ooCCCqqco   ',
-  ' oCCCTTqqco  ',
-  'oCCCCTTqcco  ',
-  'oCCCCTTqcco  ',
-  'oCCCCTTqcco  ',
-  'oCCCCTTqco   ',
-  ' oCCCTTqco   ',
-  ' ooCCCTqoo   ',
-  '   oooooo    ',
+  '     oAAo      ',
+  '   ooCCcooo    ',
+  '  ooCCCqqcco   ',
+  ' ooCCCTTqqcco  ',
+  'oCCCCCTTqccco  ',
+  'oCCCCCTTqccco  ',
+  'oCCCCCTTqccoo  ',
+  'oCCCCCTTqco    ',
+  'oCCCCTTqoo     ',
+  ' ooCCCTqo      ',
+  '   oooo        ',
 ];
+const FAR_SLEEVE = [' oooo ', 'oCcco ', 'oCcco ', ' oCco ', ' oCco ', ' ocUo ', ' oASo ', '  oo  '];
 const SLEEVE = [' ooo ', 'oCqCo', 'oCCco', 'oCCco', 'oCcco', ' oUo ', ' oAo ', ' oSo ', '  o  '];
 const LAP_SLEEVE = [
   ' ooo     ',
@@ -81,8 +63,18 @@ const WAVING_SLEEVE = [
   ['oo     ', 'oHo    ', ' oSAo  ', '  oAo  ', '  oUCo ', '   oCoo', '   oCCo', '    ooo'],
 ] as const;
 const TROUSER = [' oPPo ', 'oPKPo ', 'oPPpo ', 'oPKpo ', 'oPPpo ', 'oPPpo ', ' oPpo '];
+const FORWARD_HIP = ['  oPPo  ', '  oPPPo ', '   oPPPo', '    oPPo', '    oPPo'];
 const SKIRT = ['  oPPPPo  ', ' oPPPPPPo ', ' oPPPPpPo ', 'oPPPPpPPPo', 'ooPPpPPooo', '  oooooo  '];
-const SHOE = [' oo   ', 'oDLoo ', 'oDdLDo', ' oOOo '];
+const SHOE = [
+  '  oooo      ',
+  ' oDddLo     ',
+  'oDDdLLoo    ',
+  'oDOdLdLLoo  ',
+  'oDdDddLLDDo ',
+  ' odDDDDLDDdo',
+  '  ooOOOOOoo ',
+  '    ooooo   ',
+];
 const BENT_FAR = [
   ' oPPo     ',
   'oPPPPoo   ',
@@ -109,6 +101,29 @@ const BENT_NEAR = [
 // The soles stay close to the cushion so they tuck behind the chair's back.
 const RECEDING_LEG = ['    opo ', '  ooppo ', ' oPPppo ', 'oPPPpo  ', ' oooo   '];
 const RECEDING_SHOE = [' oo ', 'oDdo', ' oOo'];
+
+const nativeMasks = new WeakMap<Mask, Mask>();
+
+/** Articulation uses tile-scale landmarks. Resolve its contours on the
+ * native atlas so outlines and garment details occupy single pixels. */
+function nativeMask(rows: Mask): Mask {
+  const cached = nativeMasks.get(rows);
+  if (cached) return cached;
+  const expanded = rows.flatMap((row) => {
+    const doubled = Array.from(row, (glyph) => glyph + glyph).join('');
+    return [doubled, doubled];
+  });
+  const mask = expanded.map((row, y) =>
+    Array.from(row, (glyph, x) => {
+      if (glyph !== 'o') return glyph;
+      const neighbors = [row[x + 1], row[x - 1], expanded[y + 1]?.[x], expanded[y - 1]?.[x]];
+      if (neighbors.some((neighbor) => !neighbor || neighbor === ' ')) return glyph;
+      return neighbors.find((neighbor) => neighbor !== 'o') ?? glyph;
+    }).join(''),
+  );
+  nativeMasks.set(rows, mask);
+  return mask;
+}
 
 function shade(pixel: string, amount: number, lift = 0): string {
   const channel = (at: number) =>
@@ -143,34 +158,6 @@ function lastInk(source: SpriteData): number {
   let y = source.length - 1;
   while (y >= 0 && !source[y].some(Boolean)) y--;
   return y;
-}
-
-function drawHair(
-  art: SpriteData,
-  reference: SpriteData,
-  skin: string,
-  back: boolean,
-  firstY: number,
-): void {
-  const first = reference.findIndex((row) => row.some(Boolean));
-  if (first < 0 || first > 12) return;
-  const colors = new Set(sample(reference, first, 11, 0, CHAR_FRAME_W).filter(Boolean));
-  const hairInk = (pixel: string) => pixel && pixel !== skin && colors.has(pixel);
-  // Retain the real hairstyle, hat, and head accessory swatches at the crown.
-  // Faces and anatomy are drawn below on their own plane.
-  for (let i = 0; i < 7; i++) {
-    const raw = reference[Math.round(first + ((12 - first) * i) / 6)];
-    for (let x = 0; x < CHAR_FRAME_W; x++) {
-      if (hairInk(raw[x])) art[firstY + i][x + 1] = raw[x];
-    }
-  }
-  // Preserve locks and hanging accessories around the side of the face.
-  for (let y = 13; y < 21; y++) {
-    const dest = art[firstY + y - 6];
-    for (let x = 0; x < CHAR_FRAME_W; x++) {
-      if ((x < 5 || x > 12 || back) && hairInk(reference[y][x])) dest[x + 1] = reference[y][x];
-    }
-  }
 }
 
 /** Draw the same hinged seated pose in each room direction while taking colors
@@ -208,7 +195,6 @@ export function roomCharacterSprite(
   const shirt = front[20][5] || mostCommon(sample(standing, 19, 24, 5, 12), skin);
   const trousers = mostCommon(sample(front, 25, 27, 6, 10), shirt);
   const shoes = front[29][5] || mostCommon(sample(front, 29, 31, 5, 11), trousers);
-  const hair = mostCommon(sample(standing, 5, 13, 2, 14), skin);
   const iris = mostCommon(
     sample(front, 14, 16, 6, 11).filter((ink) => ink && parseInt(ink.slice(1, 7), 16) < 0x454545),
     shade(skin, 0.32),
@@ -219,13 +205,7 @@ export function roomCharacterSprite(
     o: ink,
     S: skin,
     A: shade(skin, 0.76),
-    s: shade(skin, 0.89),
     H: shade(skin, 1.18, 3),
-    h: back ? hair : shade(skin, 1.09, 5),
-    b: shade(skin, 0.63),
-    E: blink ? shade(skin, 0.47) : iris,
-    e: blink ? skin : shade(iris, 0.87),
-    m: shade(skin, 0.66),
     C: shirt,
     c: shade(shirt, 0.72),
     q: shade(shirt, 1.13, 9),
@@ -243,12 +223,15 @@ export function roomCharacterSprite(
     { length: sitting ? ROOM_SEATED_FRAME_HEIGHT : STANDING_H },
     () => new Array<string>(FRAME_W).fill(''),
   );
-  const paint: Paint = (rows, x, y, palette) => {
-    rows.forEach((row, dy) => {
+  const paint: Paint = (rows, x, y, palette, native = false) => {
+    const mask = native ? rows : nativeMask(rows);
+    const left = x * ROOM_CHARACTER_NATIVE_SCALE;
+    const top = y * ROOM_CHARACTER_NATIVE_SCALE;
+    mask.forEach((row, dy) => {
       for (let dx = 0; dx < row.length; dx++) {
-        const at = x + dx;
+        const at = left + dx;
         const color = palette[row[dx]];
-        if (color && at >= 0 && at < FRAME_W) art[y + dy][at] = color;
+        if (color && at >= 0 && at < FRAME_W) art[top + dy][at] = color;
       }
     });
   };
@@ -270,30 +253,40 @@ export function roomCharacterSprite(
     paint(RECEDING_SHOE, 10, 25, colors);
   } else if (sitting) {
     paint(BENT_FAR, 8, 22, farCloth);
-    paint(SHOE, 12, 28, farCloth);
+    paint(SHOE, 12, 28, farCloth, true);
     paint(BENT_NEAR, 4, 23, legs);
-    paint(SHOE, 9, 30, colors);
+    paint(SHOE, 9, 30, colors, true);
   } else {
     const forward = stride === 1;
     const farX = stride === -1 ? 5 : 8 + stride * 2;
     const nearX = stride === -1 ? 7 : 4 - stride;
     const farY = forward ? 2 : 0;
     const nearY = forward ? -2 : 0;
+    if (forward) paint(FORWARD_HIP, 7, 25, farCloth);
     paint(TROUSER, farX, 27 + farY, farCloth);
-    paint(SHOE, farX, 33 + farY, farCloth);
+    paint(SHOE, farX, 33 + farY, farCloth, true);
     paint(TROUSER, nearX, 28 + nearY, legs);
-    paint(SHOE, nearX, 35 + nearY, colors);
+    paint(SHOE, nearX, 35 + nearY, colors, true);
   }
   if (skirt) paint(SKIRT, sitting ? 5 : 4, sitting ? (back ? 22 : 23) : 25, colors);
 
   const bodyY = sitting ? 15 : 17;
-  paint(COAT, 3, bodyY, colors);
+  if (!sitting) paint(FAR_SLEEVE, 12, bodyY + 2 - stride, farCloth);
+  paint(COAT, 2, bodyY, colors);
   // Give stripes, ties, and jackets from the cast their existing swatches on
   // the visible front or back of the shirt, inside the new sleeve geometry.
   for (let y = 0; y < 6; y++) {
     for (let x = 0; x < 3; x++) {
       const swatch = standing[19 + y][7 + x];
-      if (swatch) art[bodyY + y + 4][8 + x] = swatch;
+      if (!swatch) continue;
+      const dstY = (bodyY + y + 4) * ROOM_CHARACTER_NATIVE_SCALE;
+      const dstX = (8 + x) * ROOM_CHARACTER_NATIVE_SCALE;
+      for (let dy = 0; dy < ROOM_CHARACTER_NATIVE_SCALE; dy++) {
+        for (let dx = 0; dx < ROOM_CHARACTER_NATIVE_SCALE; dx++) {
+          const row = art[dstY + dy];
+          if (row[dstX + dx] && row[dstX + dx] !== ink) row[dstX + dx] = swatch;
+        }
+      }
     }
   }
   if (sitting && (gesture === 'type' || gesture === 'read')) {
@@ -305,19 +298,16 @@ export function roomCharacterSprite(
   if (sitting && gesture === 'read') {
     paint(['  oo ', 'opppo', ' oppo', '  oo '], 10, bodyY + 8, { o: ink, p: paper });
   }
-  const headY = sitting ? 6 : 8;
-  paint(back ? BACK_HEAD : FACE, 2, headY, colors);
-  const glasses = front[15][7];
-  if (
-    !back &&
-    glasses &&
-    glasses !== skin &&
-    glasses === front[15][8] &&
-    glasses !== front[14][7]
-  ) {
-    paint([' llll ', 'l l ll', ' llll '], 8, headY + 4, { l: glasses });
-  }
-  drawHair(art, standing, skin, back, headY - 2);
+  drawRoomCharacterHead(art, {
+    standing,
+    front,
+    skin,
+    iris,
+    ink,
+    back,
+    blink,
+    headY: sitting ? 12 : 16,
+  });
   if (gesture === 'wave') paint(WAVING_SLEEVE[beat], 0, bodyY - 3, colors);
 
   const result = mirror ? art.map((row) => row.reverse()) : art;

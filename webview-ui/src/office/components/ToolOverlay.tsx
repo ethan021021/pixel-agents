@@ -22,7 +22,7 @@ import type { SubagentCharacter } from '../../hooks/useExtensionMessages.js';
 import { ContextBar } from '../ContextBar.js';
 import { contextLeft } from '../contextGauge.js';
 import type { OfficeState } from '../engine/officeState.js';
-import { roomCharacterFrame, roomCharacterHeadroom } from '../engine/roomCharacterFrame.js';
+import { roomCharacterFrame } from '../engine/roomCharacterFrame.js';
 import { roomSeatArt } from '../engine/roomFurnitureArt.js';
 import { overlayProjection } from '../projection.js';
 import { getCachedSprite } from '../sprites/spriteCache.js';
@@ -139,6 +139,14 @@ export function ToolOverlay({
     dpr,
     angled,
   );
+  const deviceProject = angled
+    ? {
+        toScreen: (worldX: number, worldY: number) => {
+          const { x, y } = project.toScreen(worldX, worldY);
+          return { x: x * dpr, y: y * dpr };
+        },
+      }
+    : null;
 
   const selectedId = officeState.selectedAgentId;
   const hoveredId = officeState.hoveredAgentId;
@@ -164,13 +172,11 @@ export function ToolOverlay({
         const spriteScale = zoom / dpr;
         const sitting = ch.state === CharacterState.TYPE;
         const sittingOffset = sitting ? CHARACTER_SITTING_OFFSET_PX : 0;
-        const frame = angled
-          ? roomCharacterFrame(ch, project, spriteScale, roomSeatArt(officeState, ch.seatId))
+        const frame = deviceProject
+          ? roomCharacterFrame(ch, deviceProject, zoom, roomSeatArt(officeState, ch.seatId))
           : null;
-        const headX = frame ? frame.x + frame.width / 2 : anchor.x;
-        const roomHeadY = frame
-          ? frame.y + frame.height - roomCharacterHeadroom(frame.pixels) * spriteScale
-          : null;
+        const headX = frame ? (frame.x + frame.width / 2) / dpr : anchor.x;
+        const roomHeadY = frame ? frame.headY / dpr : null;
 
         // Speech bubble (permission dots / done checkmark) — rendered here in
         // the DOM, above the label panels (OVERLAY_BUBBLE_Z_INDEX over the label panels), for every

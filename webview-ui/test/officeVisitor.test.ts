@@ -235,18 +235,46 @@ test('anchors each sofa occupant to their cushion and keeps the visible head cli
   const view = roomProjection(640, 480, saved.cols, saved.rows, zoom, 0, 0);
   const frame = roomCharacterFrame(visitor, view, zoom, seat);
   const contact = view.toScreen(seat.x, seat.y);
-  assert.equal(frame.x, Math.round(contact.x - ROOM_SEATED_HIP.x * zoom));
-  assert.equal(frame.y, Math.round(contact.y - (seat.z + ROOM_SEATED_HIP.y) * zoom));
+  assert.equal(frame.pixelZoom, 1.5);
+  assert.equal(frame.x, Math.round(contact.x - ROOM_SEATED_HIP.x * frame.pixelZoom));
+  assert.equal(
+    frame.y,
+    Math.round(contact.y - seat.z * zoom - ROOM_SEATED_HIP.y * frame.pixelZoom),
+  );
   const row = frame.pixels.findIndex((line) => line.some(Boolean));
   const col = frame.pixels[row].findIndex(Boolean);
+  assert.equal(frame.headY, frame.y + row * frame.pixelZoom);
   const hit = roomActorAt(
     office,
     view,
     zoom,
-    frame.x + (col + 0.5) * zoom,
-    frame.y + (row + 0.5) * zoom,
+    frame.x + (col + 0.5) * frame.pixelZoom,
+    frame.y + (row + 0.5) * frame.pixelZoom,
   );
   assert.equal(hit.agentId, visitor.id);
+});
+
+test('picks the painted character pixel at the minimum room zoom', () => {
+  const saved = { ...layout(), furniture: [] };
+  const office = new OfficeState(saved);
+  assert.equal(office.enterOffice(0), true);
+  const visitor = office.visitor!;
+  const view = roomProjection(640, 480, saved.cols, saved.rows, 1, 0, 0);
+  const frame = roomCharacterFrame(visitor, view, 1);
+  assert.equal(frame.pixelZoom, 0.5);
+  assert.equal(frame.width, 18);
+  assert.equal(frame.y + frame.height, Math.round(frame.foot.y));
+
+  // A half-size bitmap samples the native texel at the center of each device pixel.
+  const row = frame.pixels.findIndex(
+    (line, y) => y % 2 === 1 && line.some((ink, x) => x % 2 === 1 && ink),
+  );
+  const col = frame.pixels[row].findIndex((ink, x) => x % 2 === 1 && ink);
+  const x = frame.x + Math.floor(col / 2);
+  const y = frame.y + Math.floor(row / 2);
+  assert.equal(roomActorAt(office, view, 1, x + 0.1, y + 0.1).agentId, visitor.id);
+  assert.equal(roomActorAt(office, view, 1, x + 0.9, y + 0.9).agentId, visitor.id);
+  assert.equal(roomActorAt(office, view, 1, frame.x + 0.5, frame.y + 0.5).agentId, null);
 });
 
 test('picks the original desk from its modeled pixels and preserves custom furniture art', () => {

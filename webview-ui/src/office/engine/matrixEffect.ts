@@ -17,6 +17,13 @@ import {
 import type { Character, SpriteData } from '../types.js';
 import { MATRIX_EFFECT_DURATION } from '../types.js';
 
+const flatGrid = {
+  cols: MATRIX_SPRITE_COLS,
+  rows: MATRIX_SPRITE_ROWS,
+  trail: MATRIX_TRAIL_LENGTH,
+};
+let roomBuffer: HTMLCanvasElement | undefined;
+
 /** Hash-based flicker: ~70% visible for shimmer effect */
 function flickerVisible(col: number, row: number, time: number): boolean {
   const t = Math.floor(time * MATRIX_FLICKER_FPS);
@@ -36,21 +43,55 @@ export function renderMatrixEffect(
   drawY: number,
   zoom: number,
 ): void {
+  renderMatrixGrid(ctx, ch, spriteData, drawX, drawY, zoom, flatGrid);
+}
+
+/** Draw the full character grid in a reusable buffer for the room renderer. */
+export function roomMatrixSprite(
+  ch: Character,
+  pixels: SpriteData,
+  nativeScale: number,
+): HTMLCanvasElement {
+  const cols = pixels[0].length;
+  const rows = pixels.length;
+  const buffer = (roomBuffer ??= document.createElement('canvas'));
+  if (buffer.width !== cols) buffer.width = cols;
+  if (buffer.height !== rows) buffer.height = rows;
+  const effect = buffer.getContext('2d')!;
+  effect.clearRect(0, 0, cols, rows);
+  renderMatrixGrid(effect, ch, pixels, 0, 0, 1, {
+    cols,
+    rows,
+    trail: MATRIX_TRAIL_LENGTH * nativeScale,
+  });
+  return buffer;
+}
+
+function renderMatrixGrid(
+  ctx: CanvasRenderingContext2D,
+  ch: Character,
+  spriteData: SpriteData,
+  drawX: number,
+  drawY: number,
+  zoom: number,
+  { cols, rows, trail }: typeof flatGrid,
+): void {
   const progress = ch.matrixEffectTimer / MATRIX_EFFECT_DURATION;
   const isSpawn = ch.matrixEffect === 'spawn';
   const time = ch.matrixEffectTimer;
-  const totalSweep = MATRIX_SPRITE_ROWS + MATRIX_TRAIL_LENGTH;
+  const totalSweep = rows + trail;
 
-  for (let col = 0; col < MATRIX_SPRITE_COLS; col++) {
+  for (let col = 0; col < cols; col++) {
     // Stagger: each column starts at a slightly different time
-    const stagger = (ch.matrixEffectSeeds[col] ?? 0) * MATRIX_COLUMN_STAGGER_RANGE;
+    const seed = Math.floor((col * MATRIX_SPRITE_COLS) / cols);
+    const stagger = (ch.matrixEffectSeeds[seed] ?? 0) * MATRIX_COLUMN_STAGGER_RANGE;
     const colProgress = Math.max(
       0,
       Math.min(1, (progress - stagger) / (1 - MATRIX_COLUMN_STAGGER_RANGE)),
     );
     const headRow = colProgress * totalSweep;
 
-    for (let row = 0; row < MATRIX_SPRITE_ROWS; row++) {
+    for (let row = 0; row < rows; row++) {
       const pixel = spriteData[row]?.[col];
       const hasPixel = pixel && pixel !== '';
       const distFromHead = headRow - row;
@@ -66,9 +107,9 @@ export function renderMatrixEffect(
           // Head pixel: bright white-green
           ctx.fillStyle = MATRIX_HEAD_COLOR;
           ctx.fillRect(px, py, zoom, zoom);
-        } else if (distFromHead < MATRIX_TRAIL_LENGTH) {
+        } else if (distFromHead < trail) {
           // Trail zone: show character pixel with green overlay, or just green if no pixel
-          const trailPos = distFromHead / MATRIX_TRAIL_LENGTH;
+          const trailPos = distFromHead / trail;
           if (hasPixel) {
             // Draw original pixel
             ctx.fillStyle = pixel;
@@ -111,10 +152,10 @@ export function renderMatrixEffect(
           // Head pixel: bright white-green
           ctx.fillStyle = MATRIX_HEAD_COLOR;
           ctx.fillRect(px, py, zoom, zoom);
-        } else if (distFromHead < MATRIX_TRAIL_LENGTH) {
+        } else if (distFromHead < trail) {
           // Trail zone: fading green
           if (flickerVisible(col, row, time)) {
-            const trailPos = distFromHead / MATRIX_TRAIL_LENGTH;
+            const trailPos = distFromHead / trail;
             const alpha = (1 - trailPos) * MATRIX_TRAIL_EMPTY_ALPHA;
             ctx.fillStyle =
               trailPos < MATRIX_TRAIL_MID_THRESHOLD
