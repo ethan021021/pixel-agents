@@ -1,8 +1,14 @@
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 
 import { useCast } from '../characters/castStore.js';
 import { characterLabel } from '../characters/profiles.js';
 import { useDismiss } from '../hooks/useDismiss.js';
+import {
+  getCharacterRoomSource,
+  getCharacterTemplatesVersion,
+  getLoadedCharacterCount,
+  subscribeCharacterTemplates,
+} from '../office/sprites/spriteData.js';
 import { CharacterMugShot } from './CharacterMugShot.js';
 import { Button } from './ui/Button.js';
 
@@ -22,6 +28,21 @@ export function OfficeVisitControls({
   onWave,
 }: OfficeVisitControlsProps) {
   const { profiles } = useCast();
+  useSyncExternalStore(subscribeCharacterTemplates, getCharacterTemplatesVersion);
+  const choices = profiles.map((profile, palette) => ({
+    key: profile.id,
+    label: characterLabel(profile, palette),
+    palette,
+  }));
+  for (let palette = profiles.length; palette < getLoadedCharacterCount(); palette++) {
+    if (getCharacterRoomSource(palette) === 'external') {
+      choices.push({
+        key: `external-${palette}`,
+        label: `Imported ${palette - profiles.length + 1}`,
+        palette,
+      });
+    }
+  }
   const [choosing, setChoosing] = useState(false);
   const [entryFailed, setEntryFailed] = useState(false);
   const root = useRef<HTMLDivElement>(null);
@@ -68,7 +89,7 @@ export function OfficeVisitControls({
         type="button"
         size="md"
         variant={open ? 'active' : 'default'}
-        disabled={!visiting && profiles.length === 0}
+        disabled={!visiting && choices.length === 0}
         aria-expanded={visiting ? undefined : open}
         aria-controls={open ? pickerId : undefined}
         className="pointer-events-auto min-h-40 whitespace-nowrap border-border! shadow-pixel disabled:cursor-default disabled:opacity-(--btn-disabled-opacity)"
@@ -104,11 +125,10 @@ export function OfficeVisitControls({
             Choose your character
           </h2>
           <div className="pixel-scrollbar grid max-h-[min(208px,40dvh)] grid-cols-3 gap-4 overflow-y-auto overscroll-contain p-2">
-            {profiles.map((profile, palette) => {
-              const label = characterLabel(profile, palette);
+            {choices.map(({ key, label, palette }) => {
               return (
                 <Button
-                  key={profile.id}
+                  key={key}
                   ref={palette === 0 ? firstChoice : undefined}
                   type="button"
                   size="sm"

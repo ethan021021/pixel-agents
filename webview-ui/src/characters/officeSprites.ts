@@ -127,7 +127,7 @@ function sync(): void {
       const sprite = blink ? null : external[palette - profiles.length];
       return sprite ? hueTurned(sprite, repeat) : null;
     },
-    cast.map(({ room }) => room),
+    [...cast.map(({ room }) => room), ...external.map(() => 'external' as const)],
   );
   synced = true;
 }
