@@ -216,12 +216,6 @@ export function updateCharacter(
     }
 
     case CharacterState.WALK: {
-      // Walk animation
-      if (ch.frameTimer >= WALK_FRAME_DURATION_SEC) {
-        ch.frameTimer -= WALK_FRAME_DURATION_SEC;
-        ch.frame = (ch.frame + 1) % 4;
-      }
-
       if (ch.path.length === 0) {
         // Path complete — snap to tile center and transition
         const center = tileCenter(ch.tileCol, ch.tileRow);
@@ -273,7 +267,7 @@ export function updateCharacter(
         break;
       }
 
-      stepAlongPath(ch, dt);
+      stepCharacterWalk(ch, dt);
 
       // If became active while wandering, repath to seat
       if (ch.isActive && ch.seatId) {
@@ -301,8 +295,12 @@ export function updateCharacter(
   }
 }
 
-/** Move along `ch.path` for one frame; on reaching a tile, make it the character's tile. */
-function stepAlongPath(ch: Character, dt: number): void {
+/** Advance the walk animation and move one frame along a nonempty path. */
+export function stepCharacterWalk(ch: Character, dt: number): void {
+  if (ch.frameTimer >= WALK_FRAME_DURATION_SEC) {
+    ch.frameTimer -= WALK_FRAME_DURATION_SEC;
+    ch.frame = (ch.frame + 1) % 4;
+  }
   const nextTile = ch.path[0];
   ch.dir = directionBetween(ch.tileCol, ch.tileRow, nextTile.col, nextTile.row);
 
@@ -357,11 +355,7 @@ export function updateHelper(
   ch.helperIdleSec = ch.isActive ? 0 : ch.helperIdleSec + dt;
 
   if (ch.state === CharacterState.WALK && ch.path.length > 0) {
-    if (ch.frameTimer >= WALK_FRAME_DURATION_SEC) {
-      ch.frameTimer -= WALK_FRAME_DURATION_SEC;
-      ch.frame = (ch.frame + 1) % 4;
-    }
-    stepAlongPath(ch, dt);
+    stepCharacterWalk(ch, dt);
     const end = ch.path[ch.path.length - 1];
     // Mid-tile, or still headed home: keep walking. Otherwise (the path is
     // done, or home moved away from where it ends) decide again.

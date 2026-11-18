@@ -40,6 +40,10 @@ import {
   SELECTED_OUTLINE_ALPHA,
   SELECTION_DASH_PATTERN,
   SELECTION_HIGHLIGHT_COLOR,
+  TOOL_OVERLAY_VERTICAL_OFFSET,
+  VISITOR_ID,
+  VISITOR_MARKER_BACKGROUND,
+  VISITOR_MARKER_TEXT,
   VOID_TILE_DASH_PATTERN,
   VOID_TILE_OUTLINE_COLOR,
 } from '../../constants.js';
@@ -348,6 +352,29 @@ export function renderTileGrid(
 interface ZDrawable {
   zY: number;
   draw: (ctx: CanvasRenderingContext2D) => void;
+}
+
+const VISITOR_MARKER = ['#.#.###.#.#', '#.#.#.#.#.#', '.#..#.#.#.#', '.#..#.#.#.#', '.#..###.###'];
+const visitorMarkerRuns = gridRuns(VISITOR_MARKER);
+
+/** Overlay above the visitor sprite, using the projection's device pixels. */
+export function renderVisitorMarker(
+  ctx: CanvasRenderingContext2D,
+  centerX: number,
+  spriteTop: number,
+  zoom: number,
+): void {
+  const unit = Math.max(1, Math.round(zoom / 2));
+  const width = VISITOR_MARKER[0].length * unit;
+  const height = VISITOR_MARKER.length * unit;
+  const x = Math.round(centerX - width / 2);
+  const y = Math.round(spriteTop - height - 2 * unit);
+  ctx.fillStyle = VISITOR_MARKER_BACKGROUND;
+  ctx.fillRect(x - 2 * unit, y - unit, width + 4 * unit, height + 2 * unit);
+  ctx.fillStyle = VISITOR_MARKER_TEXT;
+  for (const [col, row, count] of visitorMarkerRuns) {
+    ctx.fillRect(x + col * unit, y + row * unit, count * unit, unit);
+  }
 }
 
 /** @internal */
@@ -922,6 +949,16 @@ export function renderFrame(
   // Pet heart bubbles (canvas overlay pass)
   if (pets && pets.length > 0) {
     renderPetBubbles(ctx, pets, offsetX, offsetY, zoom);
+  }
+  const visitor = characters.find((ch) => ch.id === VISITOR_ID);
+  if (visitor) {
+    const sitting = visitor.state === CharacterState.TYPE ? CHARACTER_SITTING_OFFSET_PX : 0;
+    renderVisitorMarker(
+      ctx,
+      offsetX + visitor.x * zoom,
+      offsetY + (visitor.y + sitting - TOOL_OVERLAY_VERTICAL_OFFSET) * zoom,
+      zoom,
+    );
   }
 
   // Area labels (above bubbles + characters, below editor overlays)

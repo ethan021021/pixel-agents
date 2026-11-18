@@ -35,7 +35,7 @@ const SEAT_FACING_FOR_ITEM: Record<string, Direction> = {
   left: Direction.LEFT,
 };
 
-function facingOffset(dir: Direction): { dCol: number; dRow: number } {
+export function facingOffset(dir: Direction): { dCol: number; dRow: number } {
   if (dir === Direction.RIGHT) return { dCol: 1, dRow: 0 };
   if (dir === Direction.LEFT) return { dCol: -1, dRow: 0 };
   if (dir === Direction.DOWN) return { dCol: 0, dRow: 1 };

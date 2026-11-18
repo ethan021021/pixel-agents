@@ -94,6 +94,12 @@ pixel-agents --help
 
 The printed URL carries a `?token=`. Without it you can watch the office in a sort of read-only mode: no agents can be launched, terminals are not shown, and layout and settings cannot be edited. The token is kept in `~/.pixel-agents/standalone-token`, so a bookmark keeps working if you also fix `--port`. Treat the URL as a secret: whoever holds it can do all of the above.
 
+### Walk around the office
+
+In the editable browser office, choose **Walk around**, then pick a character from your wardrobe. Click or tap a floor tile to walk there, an unassigned chair to sit, or a pet to give it a heart. The arrow keys also move your character while the floor is focused. Click a desk with a live browser terminal to walk over and open that agent's terminal.
+
+The angled view uses your existing office layout. Choose **Leave office** to return to the flat view whenever you like.
+
 ### Watch Codex sessions
 
 Open Pixel Agents in VS Code or standalone. To track a session you start outside the office, run `codex` in a terminal or open a local Codex session in the desktop app, then send a prompt. Pixel Agents tracks Codex in your workspace folders, the standalone start directory, and Directories you add. To include other locations, turn on **Settings → Watch All Sessions**.

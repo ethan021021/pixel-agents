@@ -21,6 +21,7 @@ declare global {
       }>;
       /** The character the camera follows (null = free camera). */
       getCameraFollowId?: () => number | null;
+      getVisitor?: () => { palette: number; x: number; y: number; seatId: string | null } | null;
       /** Effective "Display headless as ghosts" setting the renderer is using. */
       getGhostHeadlessAgents?: () => boolean;
       // ── Carpet + Areas observability (added for carpet/areas e2e) ──
@@ -165,6 +166,12 @@ export function installTestHooks(officeStateRef: { current: OfficeState | null }
   hooks.getGhostHeadlessAgents = () => isGhostHeadlessAgentsEnabled();
 
   hooks.getCameraFollowId = () => officeStateRef.current?.cameraFollowId ?? null;
+  hooks.getVisitor = () => {
+    const visitor = officeStateRef.current?.visitor;
+    if (!visitor) return null;
+    const { palette, x, y, seatId } = visitor;
+    return { palette, x, y, seatId };
+  };
 
   hooks.selectAgent = (id) => {
     const os = officeStateRef.current;
@@ -177,7 +184,7 @@ export function installTestHooks(officeStateRef: { current: OfficeState | null }
   hooks.getPets = () => {
     const os = officeStateRef.current;
     if (!os) return [];
-    return os.pets.map((pet) => ({
+    return os.getPets().map((pet) => ({
       id: pet.id,
       name: pet.name,
       petType: pet.petType,

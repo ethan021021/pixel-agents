@@ -14,6 +14,7 @@
  * graph that imports it.
  */
 
+import { roomProjection } from './roomProjection.js';
 import { TILE_SIZE } from './types.js';
 
 /** Device-pixel offset of the map's top-left corner inside the canvas.
@@ -39,6 +40,7 @@ export function mapOffset(
 /** Projects world points into CSS pixels within the overlay container that
  *  sits on top of the canvas. */
 export interface OverlayProjection {
+  toScreen(worldX: number, worldY: number): { x: number; y: number };
   toScreenX(worldX: number): number;
   toScreenY(worldY: number): number;
   /** Container size in world units — what the viewport currently covers.
@@ -55,6 +57,7 @@ export function overlayProjection(
   zoom: number,
   pan: { x: number; y: number },
   dpr: number,
+  angled = false,
 ): OverlayProjection {
   const canvasW = Math.round(containerRect.width * dpr);
   const canvasH = Math.round(containerRect.height * dpr);
@@ -67,9 +70,19 @@ export function overlayProjection(
     pan.x,
     pan.y,
   );
+  const toScreenX = (worldX: number) => (offsetX + worldX * zoom) / dpr;
+  const toScreenY = (worldY: number) => (offsetY + worldY * zoom) / dpr;
+  const room = angled
+    ? roomProjection(canvasW, canvasH, layout.cols, layout.rows, zoom, pan.x, pan.y)
+    : null;
   return {
-    toScreenX: (worldX) => (offsetX + worldX * zoom) / dpr,
-    toScreenY: (worldY) => (offsetY + worldY * zoom) / dpr,
+    toScreen: (worldX, worldY) => {
+      if (!room) return { x: toScreenX(worldX), y: toScreenY(worldY) };
+      const { x, y } = room.toScreen(worldX, worldY);
+      return { x: x / dpr, y: y / dpr };
+    },
+    toScreenX,
+    toScreenY,
     viewportWorldWidth: canvasW / zoom,
     viewportWorldHeight: canvasH / zoom,
     toWorldLength: (cssPx) => (cssPx * dpr) / zoom,

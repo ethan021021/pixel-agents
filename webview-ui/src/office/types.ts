@@ -57,6 +57,8 @@ export interface Seat {
 }
 
 export interface FurnitureInstance {
+  /** UID of the layout's placed item, when this instance represents furniture. */
+  uid?: string;
   sprite: SpriteData;
   /** Pixel x (top-left) */
   x: number;

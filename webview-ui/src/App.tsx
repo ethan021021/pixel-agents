@@ -12,6 +12,7 @@ import { EditActionBar } from './components/EditActionBar.js';
 import { IntroBubble } from './components/IntroBubble.js';
 import { LoadingScene } from './components/LoadingScene.js';
 import { MigrationNotice } from './components/MigrationNotice.js';
+import { OfficeVisitControls } from './components/OfficeVisitControls.js';
 import { SettingsModal } from './components/SettingsModal.js';
 import { TerminalDrawer } from './components/TerminalDrawer.js';
 import { TerminalHideRibbon } from './components/TerminalHideRibbon.js';
@@ -48,6 +49,7 @@ import { exportLayoutToFile } from './office/layout/exportLayout.js';
 import { isRotatable } from './office/layout/furnitureCatalog.js';
 import { migrateLayoutColors } from './office/layout/layoutSerializer.js';
 import { overlayProjection } from './office/projection.js';
+import { roomProjection } from './office/roomProjection.js';
 import { getPetCount } from './office/sprites/petSpriteData.js';
 import { EditTool, type OfficeLayout, TILE_SIZE } from './office/types.js';
 import { isBrowserRuntime, isE2E } from './runtime.js';
@@ -160,6 +162,9 @@ function App() {
   const [hooksTooltipDismissed, setHooksTooltipDismissed] = useState(false);
   const [isDebugMode, setIsDebugMode] = useState(false);
   const [alwaysShowOverlay, setAlwaysShowOverlay] = useState(false);
+  const officeState = getOfficeState();
+  const visiting = useSyncExternalStore(officeState.subscribeVisitor, () => !!officeState.visitor);
+  const panBeforeVisit = useRef<{ x: number; y: number } | null>(null);
 
   // Mobile shell (phones, touch tablets): office and terminal as sliding
   // full-screen pages with the cards in a bottom bar. Desktop keeps the
@@ -275,6 +280,35 @@ function App() {
     onClose: handleIntroClose,
   } = useIntroTour({ consentRequest, hooksInstalled, hooksStatusSeq, dismissConsentRequest });
 
+  const canVisit =
+    isBrowserRuntime && !officeReadOnly && !editor.isEditMode && !isDebugMode && !intro;
+  const leaveOffice = useCallback(() => officeState.leaveOffice(), [officeState]);
+
+  const enterOffice = useCallback(
+    (palette: number): boolean => {
+      if (!canVisit || !officeState.enterOffice(palette) || !officeState.visitor) return false;
+      panBeforeVisit.current = editor.panRef.current;
+      officeState.breakCameraFollow();
+      const { cols, rows } = officeState.getLayout();
+      editor.panRef.current = roomProjection(0, 0, cols, rows, editor.zoom, 0, 0).focusPan(
+        officeState.visitor.x,
+        officeState.visitor.y,
+      );
+      return true;
+    },
+    [canVisit, editor.panRef, editor.zoom, officeState],
+  );
+
+  useEffect(() => {
+    if (visiting && !canVisit) leaveOffice();
+  }, [canVisit, leaveOffice, visiting]);
+  useEffect(() => {
+    if (!visiting && panBeforeVisit.current) {
+      editor.panRef.current = panBeforeVisit.current;
+      panBeforeVisit.current = null;
+    }
+  }, [editor.panRef, visiting]);
+
   // The Settings surface renders one provider today; its checkbox binds to
   // the Claude row of the per-provider install-state map.
   const claudeHooksInstalled = hooksInstalled['claude'] === true;
@@ -341,11 +375,9 @@ function App() {
         editor.zoom,
         editor.panRef.current,
         window.devicePixelRatio || 1,
+        canVisit && visiting,
       );
-      return {
-        x: projection.toScreenX((col + 0.5) * TILE_SIZE),
-        y: projection.toScreenY((row + 0.5) * TILE_SIZE),
-      };
+      return projection.toScreen((col + 0.5) * TILE_SIZE, (row + 0.5) * TILE_SIZE);
     };
     hooks.getShowAreas = () => effectiveShowAreas;
   }, [
@@ -355,6 +387,8 @@ function App() {
     editor.zoom,
     editor.panRef,
     effectiveShowAreas,
+    canVisit,
+    visiting,
   ]);
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -374,6 +408,7 @@ function App() {
   );
 
   const handleCloseAgent = useCallback((id: number) => {
+    getOfficeState().cancelVisitorArrival();
     transport.send({ type: 'closeAgent', id });
   }, []);
 
@@ -382,6 +417,7 @@ function App() {
     (agentId: number) => {
       // If clicked agent is a sub-agent, focus the parent's terminal instead
       const os = getOfficeState();
+      os.cancelVisitorArrival();
       const focusId = os.terminalOwnerOf(agentId);
       transport.send({ type: 'focusAgent', id: focusId });
       // Standalone: focusAgent is a no-op server-side (there's no editor to
@@ -400,6 +436,11 @@ function App() {
     [terminalAgentIds, isMobile, revealTerminal, showMobileTerminal],
   );
 
+  const canFocusDesk = useCallback(
+    (agentId: number) => canVisit && terminalAgentIds.includes(agentId),
+    [canVisit, terminalAgentIds],
+  );
+
   // Desktop card click. A card with a terminal pane is its tab: show that
   // pane and select + follow the character. Without one (VS Code, or a
   // watch-only standalone session) ask the host to raise the agent's own
@@ -408,6 +449,7 @@ function App() {
   const { select: selectTerminal } = terminalDrawer;
   const handleCardSelect = useCallback(
     (agentId: number) => {
+      getOfficeState().cancelVisitorArrival();
       if (terminalAgentIds.includes(agentId)) {
         selectTerminal(agentId);
         return;
@@ -433,8 +475,6 @@ function App() {
     },
     [handleCardSelect],
   );
-
-  const officeState = getOfficeState();
 
   // Merged set of Directories the Areas dropdown can map: host-contributed ones plus
   // every distinct Directory an agent has run in this session (deduped by name; name
@@ -544,6 +584,8 @@ function App() {
       <OfficeCanvas
         officeState={officeState}
         onClick={handleClick}
+        visiting={canVisit && visiting}
+        canFocusDesk={canFocusDesk}
         isEditMode={editor.isEditMode}
         editorState={editorState}
         onEditorTileAction={editor.handleEditorTileAction}
@@ -582,6 +624,16 @@ function App() {
               providerName={usage.status.providerName}
               mobile={isMobile}
             />
+          )}
+
+          {canVisit && (
+            <div className="pointer-events-none absolute mobile-safe-top left-1/2 z-20 -translate-x-1/2">
+              <OfficeVisitControls
+                visiting={visiting}
+                onEnter={enterOffice}
+                onLeave={leaveOffice}
+              />
+            </div>
           )}
 
           {/* Vignette overlay */}
@@ -669,6 +721,7 @@ function App() {
               containerRef={containerRef}
               zoom={editor.zoom}
               panRef={editor.panRef}
+              angled={canVisit && visiting}
               onCloseAgent={handleCloseAgent}
               alwaysShowOverlay={alwaysShowOverlay}
             />
@@ -785,7 +838,7 @@ function App() {
         />
       )}
 
-      <ConnectionIndicator />
+      <ConnectionIndicator belowVisit={canVisit} />
     </div>
   );
 

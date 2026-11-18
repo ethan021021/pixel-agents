@@ -90,6 +90,9 @@ _Avoid_: track
 **Focus**:
 Bring an agent's terminal to the front. Reserved exclusively for terminals — never the in-office highlight.
 
+**Visitor**:
+The character you control in the standalone office during **Walk around**. It wears a character profile and can sit in an unassigned chair, pet an office pet, or approach an agent's desk to focus its terminal. It lives in your browser and has no agent session or saved seat assignment.
+
 **Card bar**:
 The row of agent cards: one card per running main agent (teammates and sub-agents get none), in an order the user can drag and every open office shares. Pressing a card reaches its agent.
 _Avoid_: agent list, tabs, roster (that's the characters to launch as)

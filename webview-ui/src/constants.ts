@@ -243,6 +243,46 @@ export const TOOL_OVERLAY_GAP_PX = -2;
 /** Reserved character id for the Intro's greeter. Far outside both real agent
  *  ids (positive) and sub-agent ids (small negatives from -1 down). */
 export const GREETER_ID = -1_000_000_000;
+export const VISITOR_ID = -1_000_000_001;
+export const VISITOR_MARKER_BACKGROUND = '#172531';
+export const VISITOR_MARKER_TEXT = '#c6f5ff';
+
+export const ROOM_COLORS = {
+  background: '#1b222f',
+  floor: [
+    ['#72999d', '#7ca2a5'],
+    ['#8c9982', '#94a18b'],
+    ['#a5867d', '#ad8f84'],
+    ['#9d8da7', '#a696af'],
+    ['#98a5ad', '#a1adb4'],
+    ['#af9f87', '#b8a990'],
+    ['#b6a078', '#c1aa82'],
+    ['#806f78', '#877780'],
+    ['#a28e71', '#ac9678'],
+  ],
+  floorFallback: '#849c99',
+  floorSeam: '#29333c42',
+  rug: '#916c76',
+  hoverFill: '#e9f5bf65',
+  hoverBorder: '#f3eab4',
+  platformRight: '#536266',
+  platformLeft: '#425157',
+  wallBase: '#798c89',
+  lightWall: {
+    panel: '#9eb3ad',
+    skirting: '#4b686c',
+    trim: '#c3c9b7',
+    cap: '#d9ccb1',
+    seam: '#8fa7a2',
+  },
+  shadedWall: {
+    panel: '#7e9b9b',
+    skirting: '#3c5860',
+    trim: '#a3b7ae',
+    cap: '#bdbaa5',
+    seam: '#709092',
+  },
+} as const;
 /** The character the greeter wears, by its permanent profile id: the default
  *  cast's Suit (the first in the cast if no character has that id). An id, not
  *  a name, so renaming the character doesn't change who greets. */

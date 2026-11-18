@@ -12,6 +12,7 @@ import {
   MAX_PET_ID_LENGTH,
   PET_HIT_HALF_WIDTH,
   PET_HIT_HEIGHT,
+  VISITOR_ID,
   WAITING_BUBBLE_DURATION_SEC,
 } from '../../constants.js';
 import { contextUsedShare } from '../contextGauge.js';
@@ -24,7 +25,7 @@ import {
   layoutToTileMap,
 } from '../layout/layoutSerializer.js';
 import { findPath, getWalkableTiles, isWalkable } from '../layout/tileMap.js';
-import { pairWorkstations } from '../layout/workstations.js';
+import { facingOffset, pairWorkstations } from '../layout/workstations.js';
 import { getPetCount, getPetName } from '../sprites/petSpriteData.js';
 import { getLoadedCharacterCount } from '../sprites/spriteData.js';
 import type {
@@ -39,10 +40,23 @@ import type {
 } from '../types.js';
 import { CharacterState, Direction, PetState, TILE_SIZE } from '../types.js';
 import { tickBlink } from './blink.js';
-import { createCharacter, restInChair, updateCharacter, updateHelper } from './characters.js';
+import {
+  createCharacter,
+  restInChair,
+  stepCharacterWalk,
+  updateCharacter,
+  updateHelper,
+} from './characters.js';
 import { advanceMatrixEffect, startMatrixEffect } from './matrixEffectState.js';
 import { createPet, updatePet } from './petEntity.js';
 import { anchorTile, closestFreeSeat } from './seatPlacement.js';
+import {
+  adjacentTiles,
+  furnitureCovers,
+  placeVisitor,
+  visitorRoute,
+  visitorTile,
+} from './visitorNavigation.js';
 
 /** Whether a character sits in a chair: helpers stand by their lead, and a
  *  departing character is leaving. */
@@ -51,6 +65,17 @@ function takesSeat(ch: Character): boolean {
 }
 
 type Tile = { col: number; row: number };
+type VisitorArrival = { run: () => void; pet?: Pet };
+type VisitorDeskTarget = {
+  desk: PlacedFurniture;
+  agent: Character;
+  seat: Seat;
+  pc: string | undefined;
+};
+
+const VISITOR_CAT_ID = 'visitor-gitcat';
+const VISITOR_CAT_NAME = 'Gitcat';
+const PET_APPROACH_RETRIES = 8;
 
 function sameSet<T>(a: ReadonlySet<T>, b: ReadonlySet<T>): boolean {
   return a.size === b.size && [...a].every((x) => b.has(x));
@@ -85,6 +110,19 @@ export class OfficeState {
   walkableTiles: Array<{ col: number; row: number }>;
   characters: Map<number, Character> = new Map();
   pets: Pet[] = [];
+  /** Local visitor, separate from every agent and shared seat assignment. */
+  private localVisitor: Character | null = null;
+  private localVisitorPet: Pet | null = null;
+  private visitorArrival: VisitorArrival | null = null;
+  private readonly visitorListeners = new Set<() => void>();
+  get visitor(): Character | null {
+    return this.localVisitor;
+  }
+  /** Observe entering or leaving the office. Movement stays in the simulation. */
+  subscribeVisitor = (listener: () => void): (() => void) => {
+    this.visitorListeners.add(listener);
+    return () => this.visitorListeners.delete(listener);
+  };
   /** Accumulated time for furniture animation frame cycling */
   furnitureAnimTimer = 0;
   private _selectedAgentId: number | null = null;
@@ -282,6 +320,8 @@ export class OfficeState {
 
     // Reconcile pets against the layout roster (handles editor add/remove)
     this.rebuildPetsFromLayout(layout);
+    this.reconcileVisitor(shift);
+    this.refreshVisitorPet(true);
   }
 
   /** Move a character to a random walkable tile */
@@ -448,6 +488,255 @@ export class OfficeState {
       this.takenTiles({ except: ch.id, destinations: true, plus: home }),
       ringsAround(home),
     );
+  }
+
+  enterOffice(palette: number): boolean {
+    const look =
+      Number.isInteger(palette) && palette >= 0 && palette < getLoadedCharacterCount()
+        ? palette
+        : 0;
+    if (this.visitor) {
+      this.visitor.palette = look;
+      return true;
+    }
+    const spawn = this.closestFreeWalkableTile(
+      Math.floor(this.layout.cols / 2),
+      this.layout.rows - 1,
+    );
+    if (!spawn) return false;
+    const visitor = createCharacter(VISITOR_ID, look, null, null);
+    placeVisitor(visitor, spawn);
+    visitor.state = CharacterState.IDLE;
+    visitor.isActive = false;
+    this.localVisitor = visitor;
+    this.refreshVisitorPet();
+    for (const listener of this.visitorListeners) listener();
+    return true;
+  }
+
+  leaveOffice(): void {
+    if (!this.localVisitor) return;
+    this.visitorArrival = null;
+    this.localVisitor = null;
+    this.localVisitorPet = null;
+    for (const listener of this.visitorListeners) listener();
+  }
+
+  /** Let the current walk finish without running its arrival action. */
+  cancelVisitorArrival(): void {
+    this.visitorArrival = null;
+  }
+
+  moveVisitor(col: number, row: number): boolean {
+    if (!Number.isInteger(col) || !Number.isInteger(row)) return false;
+    return this.sendVisitor([{ col, row }]);
+  }
+
+  sitVisitor(seatId: string): boolean {
+    const seat = this.seats.get(seatId);
+    const visitor = this.visitor;
+    if (!visitor || !seat || seat.assigned) return false;
+    const tile = { col: seat.seatCol, row: seat.seatRow };
+    const allowed = new Set(this.blockedTiles);
+    allowed.delete(`${tile.col},${tile.row}`);
+    return this.sendVisitor(
+      [tile],
+      {
+        run: () => {
+          if (seat.assigned || this.seats.get(seatId) !== seat) return;
+          visitor.seatId = seatId;
+          visitor.dir = seat.facingDir;
+          visitor.state = CharacterState.TYPE;
+        },
+      },
+      allowed,
+    );
+  }
+
+  petWithVisitor(petId: string): boolean {
+    const pet = this.petById(petId);
+    return pet ? this.approachPet(pet, PET_APPROACH_RETRIES) : false;
+  }
+
+  private approachPet(pet: Pet, retries: number): boolean {
+    const visitor = this.visitor;
+    if (!visitor) return false;
+    const petTile = { col: pet.tileCol, row: pet.tileRow };
+    const at = visitorTile(visitor);
+    const arrived = () => {
+      if (this.petById(pet.id) !== pet) return;
+      const dc = pet.tileCol - visitor.tileCol;
+      const dr = pet.tileRow - visitor.tileRow;
+      if (Math.abs(dc) + Math.abs(dr) > 1) {
+        if (retries > 0) this.approachPet(pet, retries - 1);
+        return;
+      }
+      if (dc) visitor.dir = dc > 0 ? Direction.RIGHT : Direction.LEFT;
+      if (dr) visitor.dir = dr > 0 ? Direction.DOWN : Direction.UP;
+      this.showPetBubble(pet.id);
+    };
+    if (visitor.moveProgress === 0 && manhattanFrom(at)(petTile) <= 1) {
+      this.visitorArrival = null;
+      visitor.path = [];
+      if (!visitor.seatId) visitor.state = CharacterState.IDLE;
+      arrived();
+      return true;
+    }
+    return this.sendVisitor(adjacentTiles(petTile.col, petTile.row), { run: arrived, pet });
+  }
+
+  walkVisitorToDesk(
+    col: number,
+    row: number,
+    canFocus: (id: number) => boolean,
+    onArrival: (id: number) => void,
+  ): boolean {
+    const target = this.visitorDeskTarget(col, row, canFocus);
+    if (!target) return false;
+    const { agent, desk, seat, pc } = target;
+    const entry = getCatalogEntry(desk.type);
+    if (!entry) return false;
+    return this.sendVisitor(adjacentTiles(desk.col, desk.row, entry.footprintW, entry.footprintH), {
+      run: () => {
+        if (
+          this.characters.get(agent.id) === agent &&
+          takesSeat(agent) &&
+          agent.seatId === seat.uid &&
+          this.seats.get(seat.uid) === seat &&
+          seat.assigned &&
+          this.seatWorkstations.get(seat.uid) === pc &&
+          this.layout.furniture.includes(desk) &&
+          canFocus(agent.id)
+        ) {
+          onArrival(agent.id);
+        }
+      },
+    });
+  }
+
+  /** Resolve the clickable desk owner without moving the visitor. */
+  getVisitorDeskAgent(col: number, row: number, canFocus: (id: number) => boolean): number | null {
+    return this.visitorDeskTarget(col, row, canFocus)?.agent.id ?? null;
+  }
+
+  private visitorDeskTarget(
+    col: number,
+    row: number,
+    canFocus: (id: number) => boolean,
+  ): VisitorDeskTarget | undefined {
+    if (!this.visitor || !Number.isInteger(col) || !Number.isInteger(row)) return undefined;
+    const desk = this.layout.furniture.find(
+      (item) => getCatalogEntry(item.type)?.isDesk && furnitureCovers(item, col, row),
+    );
+    if (!desk) return undefined;
+    const clickedPc = this.layout.furniture.find(
+      (item) =>
+        getCatalogEntry(item.type)?.category === 'electronics' && furnitureCovers(item, col, row),
+    );
+
+    let target: VisitorDeskTarget | undefined;
+    let closest = Infinity;
+    for (const agent of this.characters.values()) {
+      if (!takesSeat(agent) || !agent.seatId) continue;
+      const seat = this.seats.get(agent.seatId);
+      if (!seat?.assigned) continue;
+      const { dCol, dRow } = facingOffset(seat.facingDir);
+      const front = { col: seat.seatCol + dCol, row: seat.seatRow + dRow };
+      if (!furnitureCovers(desk, front.col, front.row)) continue;
+      const pc = this.seatWorkstations.get(seat.uid);
+      if ((clickedPc && clickedPc.uid !== pc) || !canFocus(agent.id)) continue;
+      const score = manhattanFrom(front)({ col, row });
+      if (score < closest) {
+        closest = score;
+        target = { desk, agent, seat, pc };
+      }
+    }
+    return target;
+  }
+
+  private sendVisitor(
+    destinations: Tile[],
+    arrived?: VisitorArrival,
+    blockedTiles = this.blockedTiles,
+  ): boolean {
+    const visitor = this.visitor;
+    if (!visitor) return false;
+    const route = visitorRoute(visitor, destinations, this.tileMap, blockedTiles);
+    if (!route) return false;
+    if (visitor.state !== CharacterState.WALK) {
+      visitor.frame = 0;
+      visitor.frameTimer = 0;
+    }
+    visitor.path = route;
+    visitor.seatId = null;
+    this.visitorArrival = arrived ?? null;
+    visitor.state = route.length > 0 ? CharacterState.WALK : CharacterState.IDLE;
+    if (route.length === 0) this.finishVisitorWalk();
+    return true;
+  }
+
+  private finishVisitorWalk(): void {
+    const visitor = this.visitor;
+    if (!visitor) return;
+    visitor.state = CharacterState.IDLE;
+    visitor.frame = 0;
+    visitor.frameTimer = 0;
+    const arrived = this.visitorArrival;
+    this.visitorArrival = null;
+    arrived?.run();
+  }
+
+  private reconcileVisitor(shift?: Tile): void {
+    const visitor = this.visitor;
+    if (!visitor) return;
+    this.visitorArrival = null;
+    const seat = visitor.seatId ? this.seats.get(visitor.seatId) : undefined;
+    if (seat && !seat.assigned) {
+      placeVisitor(visitor, { col: seat.seatCol, row: seat.seatRow });
+      visitor.dir = seat.facingDir;
+      return;
+    }
+    visitor.seatId = null;
+    visitor.state = CharacterState.IDLE;
+    const col = visitor.tileCol + (shift?.col ?? 0);
+    const row = visitor.tileRow + (shift?.row ?? 0);
+    const tile = isWalkable(col, row, this.tileMap, this.blockedTiles)
+      ? { col, row }
+      : (this.closestFreeWalkableTile(col, row) ?? this.walkableTiles[0]);
+    if (tile) placeVisitor(visitor, tile);
+    else this.leaveOffice();
+  }
+
+  private updateVisitor(dt: number): void {
+    const visitor = this.visitor;
+    if (!visitor) return;
+    tickBlink(visitor, dt, false);
+    if (visitor.seatId && this.seats.get(visitor.seatId)?.assigned) {
+      this.reconcileVisitor();
+      return;
+    }
+    const next = visitor.path[0];
+    if (!next) return;
+    if (!isWalkable(next.col, next.row, this.tileMap, this.blockedTiles)) {
+      const key = this.getSeatAtTile(next.col, next.row);
+      const seat = key ? this.seats.get(key) : undefined;
+      if (!seat || seat.assigned || (visitor.path.length > 1 && visitor.moveProgress === 0)) {
+        this.reconcileVisitor();
+        return;
+      }
+    }
+    visitor.frameTimer += dt;
+    stepCharacterWalk(visitor, dt);
+    const pet = this.visitorArrival?.pet;
+    if (
+      visitor.path.length === 0 ||
+      (pet &&
+        visitor.moveProgress === 0 &&
+        Math.abs(visitor.tileCol - pet.tileCol) + Math.abs(visitor.tileRow - pet.tileRow) <= 1)
+    ) {
+      visitor.path = [];
+      this.finishVisitorWalk();
+    }
   }
 
   addAgent(
@@ -1053,6 +1342,7 @@ export class OfficeState {
     pet.name = getPetName(placedPet.petType);
     this.pets.push(pet);
     this.syncLayoutPets();
+    this.refreshVisitorPet();
   }
 
   /** Remove a pet by id. Idempotent. */
@@ -1060,13 +1350,45 @@ export class OfficeState {
     const before = this.pets.length;
     this.pets = this.pets.filter((p) => p.id !== id);
     if (this.pets.length !== before) {
+      if (this.visitorArrival?.pet?.id === id) this.cancelVisitorArrival();
       this.syncLayoutPets();
+      this.refreshVisitorPet();
     }
   }
 
   /** Shallow snapshot for external consumers (renderer, hooks). */
   getPets(): Pet[] {
-    return this.pets.slice();
+    return this.localVisitorPet ? [...this.pets, this.localVisitorPet] : this.pets.slice();
+  }
+
+  private petById(petId: string): Pet | undefined {
+    if (this.localVisitorPet?.id === petId) return this.localVisitorPet;
+    return this.pets.find((pet) => pet.id === petId);
+  }
+
+  private refreshVisitorPet(reset = false): void {
+    const visitor = this.visitor;
+    if (!visitor || this.pets.length > 0) {
+      if (this.localVisitorPet && this.visitorArrival?.pet === this.localVisitorPet) {
+        this.cancelVisitorArrival();
+      }
+      this.localVisitorPet = null;
+      return;
+    }
+    if (this.localVisitorPet && !reset) return;
+    let petType = 0;
+    while (petType < getPetCount() && getPetName(petType) !== VISITOR_CAT_NAME) petType++;
+    if (petType === getPetCount()) return;
+    const from = visitorTile(visitor);
+    const occupied = this.takenTiles({});
+    const tile =
+      adjacentTiles(from.col, from.row).find(
+        ({ col, row }) =>
+          !occupied.has(`${col},${row}`) && isWalkable(col, row, this.tileMap, this.blockedTiles),
+      ) ?? from;
+    const cat = createPet(VISITOR_CAT_ID, petType, tile.col, tile.row);
+    cat.name = VISITOR_CAT_NAME;
+    this.localVisitorPet = cat;
   }
 
   /** Unique petType values currently placed. Used by the Pets toolbar to mark active rows. */
@@ -1082,7 +1404,7 @@ export class OfficeState {
    * Returns the pet id or null.
    */
   getPetAt(worldX: number, worldY: number): string | null {
-    const ordered = this.pets.slice().sort((a, b) => b.y - a.y);
+    const ordered = this.getPets().sort((a, b) => b.y - a.y);
     for (const pet of ordered) {
       const left = pet.x - PET_HIT_HALF_WIDTH;
       const right = pet.x + PET_HIT_HALF_WIDTH;
@@ -1097,7 +1419,7 @@ export class OfficeState {
 
   /** Show the heart bubble on a pet for WAITING_BUBBLE_DURATION_SEC. */
   showPetBubble(petId: string): void {
-    const pet = this.pets.find((p) => p.id === petId);
+    const pet = this.petById(petId);
     if (!pet) return;
     pet.bubbleType = 'heart';
     pet.bubbleTimer = WAITING_BUBBLE_DURATION_SEC;
@@ -1105,7 +1427,7 @@ export class OfficeState {
 
   /** Dismiss the heart bubble on click; collapses timer to a fast fade. */
   dismissPetBubble(petId: string): void {
-    const pet = this.pets.find((p) => p.id === petId);
+    const pet = this.petById(petId);
     if (!pet || !pet.bubbleType) return;
     pet.bubbleTimer = Math.min(pet.bubbleTimer, DISMISS_BUBBLE_FAST_FADE_SEC);
   }
@@ -1258,7 +1580,8 @@ export class OfficeState {
     if (!sameSet(lit, this.litPcs)) this.rebuildFurnitureInstances(lit);
 
     // ── Pet FSM ────────────────────────────────────────────────
-    for (const pet of this.pets) {
+    if (this.visitor && !this.localVisitorPet && this.pets.length === 0) this.refreshVisitorPet();
+    for (const pet of this.localVisitorPet ? [this.localVisitorPet] : this.pets) {
       updatePet(pet, dt, this.walkableTiles, this.characters, this.tileMap, this.blockedTiles);
 
       // Tick heart bubble timer (mirrors character waiting-bubble pattern)
@@ -1270,6 +1593,7 @@ export class OfficeState {
         }
       }
     }
+    this.updateVisitor(dt);
   }
 
   /** The `saveAgentSeats` payload: palette, hue and seat for every agent worth
@@ -1288,12 +1612,11 @@ export class OfficeState {
     return seats;
   }
 
-  /** Everything the renderer draws: the agents plus, while the first-run ask
-   *  is up, the consent greeter. This is the ONE place the greeter joins the
-   *  agents — every other consumer reads `characters` and gets agents only. */
+  /** Everything the renderer draws: agents, the greeter, and the local visitor. */
   getCharacters(): Character[] {
     const chars = Array.from(this.characters.values());
     if (this.greeter) chars.push(this.greeter);
+    if (this.visitor) chars.push(this.visitor);
     return chars;
   }
 

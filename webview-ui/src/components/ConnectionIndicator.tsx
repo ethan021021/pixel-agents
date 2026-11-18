@@ -15,7 +15,7 @@ const STATE_LABELS: Partial<Record<TransportState, string>> = {
  * it is invisible unless the WebSocket drops in standalone mode. Modeled on
  * VersionIndicator's absolute-overlay + pixel-panel convention.
  */
-export function ConnectionIndicator() {
+export function ConnectionIndicator({ belowVisit = false }: { belowVisit?: boolean }) {
   const [state, setState] = useState<TransportState>(transport.state);
 
   useEffect(() => {
@@ -30,7 +30,10 @@ export function ConnectionIndicator() {
   const dotClass = state === 'connecting' ? 'bg-status-permission' : 'bg-status-error';
 
   return (
-    <div className="absolute mobile-safe-top left-1/2 -translate-x-1/2 z-20 pixel-panel py-6 px-12 flex items-center gap-8 text-sm">
+    <div
+      role="status"
+      className={`pointer-events-none absolute ${belowVisit ? 'bottom-72' : 'mobile-safe-top'} left-1/2 -translate-x-1/2 z-20 pixel-panel py-6 px-12 flex items-center gap-8 text-sm`}
+    >
       <span className={`w-8 h-8 rounded-full inline-block shrink-0 ${dotClass} pixel-pulse`} />
       {label}
     </div>

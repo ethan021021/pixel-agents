@@ -43,6 +43,7 @@ interface ToolOverlayProps {
   containerRef: React.RefObject<HTMLDivElement | null>;
   zoom: number;
   panRef: React.RefObject<{ x: number; y: number }>;
+  angled?: boolean;
   onCloseAgent: (id: number) => void;
   alwaysShowOverlay: boolean;
 }
@@ -109,6 +110,7 @@ export function ToolOverlay({
   containerRef,
   zoom,
   panRef,
+  angled = false,
   onCloseAgent,
   alwaysShowOverlay,
 }: ToolOverlayProps) {
@@ -133,6 +135,7 @@ export function ToolOverlay({
     zoom,
     panRef.current,
     dpr,
+    angled,
   );
 
   const selectedId = officeState.selectedAgentId;
@@ -155,6 +158,8 @@ export function ToolOverlay({
         const isSelected = selectedId === id;
         const isHovered = hoveredId === id;
         const isSub = ch.isSubagent;
+        const anchor = project.toScreen(ch.x, ch.y);
+        const spriteScale = zoom / dpr;
 
         // Speech bubble (permission dots / done checkmark) — rendered here in
         // the DOM, above the label panels (OVERLAY_BUBBLE_Z_INDEX over the label panels), for every
@@ -175,13 +180,14 @@ export function ToolOverlay({
               ? ch.bubbleTimer / BUBBLE_FADE_DURATION_SEC
               : 1;
           bubbleTop =
-            project.toScreenY(ch.y + bubbleSittingOff - BUBBLE_VERTICAL_OFFSET_PX) -
+            anchor.y +
+            (bubbleSittingOff - BUBBLE_VERTICAL_OFFSET_PX) * spriteScale -
             (cachedBubble.height + zoom) / dpr;
           bubbleNode = (
             <div
               className="absolute -translate-x-1/2 pointer-events-none"
               style={{
-                left: project.toScreenX(ch.x),
+                left: anchor.x,
                 // Bubble bottom sits one sprite pixel above the character's
                 // anchor: project the anchor, then lift by the bubble's own
                 // device-pixel height plus one zoomed pixel, in CSS px.
@@ -204,8 +210,8 @@ export function ToolOverlay({
         // Position above character: the sprite's top edge (the tallest hair
         // reaches it), or the bubble's when one shows over the head.
         const sittingOffset = ch.state === CharacterState.TYPE ? CHARACTER_SITTING_OFFSET_PX : 0;
-        const screenX = project.toScreenX(ch.x);
-        const screenY = project.toScreenY(ch.y + sittingOffset - TOOL_OVERLAY_VERTICAL_OFFSET);
+        const screenX = anchor.x;
+        const screenY = anchor.y + (sittingOffset - TOOL_OVERLAY_VERTICAL_OFFSET) * spriteScale;
         const labelBottom = Math.min(screenY, bubbleTop ?? screenY) - TOOL_OVERLAY_GAP_PX;
 
         // A "Done" agent (finished turn: waiting bubble without awaitingInput)
