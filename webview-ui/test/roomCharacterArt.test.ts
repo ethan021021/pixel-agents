@@ -46,4 +46,34 @@ describe('room character art', () => {
     sparse[10][7] = accessory;
     expect(clearRowsBelow(roomCharacterSprite(sparse, Direction.LEFT, false))).toBe(21);
   });
+
+  it('stages the far shoe higher while keeping the near shoe on the floor', () => {
+    const standing = makeFrame();
+    for (let y = 18; y <= 29; y++) standing[y].fill(suit, 3, 13);
+    standing[30].fill(skin, 5, 7);
+    standing[30].fill(accessory, 9, 11);
+
+    const room = roomCharacterSprite(standing, Direction.DOWN, false);
+    const floor = room.findLastIndex((row) => row.some(Boolean));
+    const farSole = room.findLastIndex((row) => row.slice(6, 8).some(Boolean));
+
+    expect(clearRowsBelow(room)).toBe(clearRowsBelow(standing));
+    expect(room[floor].slice(10, 12).filter(Boolean)).toHaveLength(2);
+    expect(farSole).toBe(floor - 2);
+  });
+
+  it('shows a second shoe in standing profile without moving its original sole', () => {
+    const profile = makeFrame();
+    for (let y = 20; y <= 28; y++) profile[y].fill(suit, 6, 10);
+    profile[29].fill(suit, 7, 9);
+    profile[30].fill(accessory, 7, 9);
+
+    const room = roomCharacterSprite(profile, Direction.RIGHT, false);
+    const floor = room.findLastIndex((row) => row.some(Boolean));
+
+    expect(clearRowsBelow(room)).toBe(clearRowsBelow(profile));
+    expect(room[floor].slice(8, 10).filter(Boolean)).toHaveLength(2);
+    expect(room[floor][11]).toBe('');
+    expect(room[floor - 2][11]).not.toBe('');
+  });
 });

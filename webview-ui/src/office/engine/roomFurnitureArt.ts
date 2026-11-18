@@ -13,6 +13,7 @@ interface RoomSprite {
   pixels: SpriteData;
   left: number;
   top: number;
+  footprint?: { left: number; top: number; right: number; bottom: number };
 }
 
 interface RoomFurnitureArt {
@@ -73,9 +74,19 @@ function rasterize(model: RoomModel): RoomSprite {
     }
   }
 
+  const ground = model.boxes.filter(({ z }) => z === 0);
+  const footprint = ground.length
+    ? {
+        left: Math.min(...ground.map((box) => box.x)),
+        top: Math.min(...ground.map((box) => box.y)),
+        right: Math.max(...ground.map((box) => box.x + box.width)),
+        bottom: Math.max(...ground.map((box) => box.y + box.depth)),
+      }
+    : undefined;
   return {
     left,
     top,
+    footprint,
     pixels: pixels.map((row, y) =>
       row.map(
         (pixel, x) =>

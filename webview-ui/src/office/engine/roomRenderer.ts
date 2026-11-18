@@ -6,151 +6,26 @@ import {
   SELECTED_OUTLINE_ALPHA,
   VISITOR_ID,
 } from '../../constants.js';
-import { hslToRgb } from '../colorize.js';
 import { isWalkable } from '../layout/tileMap.js';
 import type { RoomPoint, RoomProjection } from '../roomProjection.js';
-import { ROOM_GROUND_SCALE } from '../roomProjection.js';
 import { getPetSprites } from '../sprites/petSpriteData.js';
 import { getCachedSprite, getOutlineSprite } from '../sprites/spriteCache.js';
 import { BUBBLE_HEART_SPRITE } from '../sprites/spriteData.js';
-import type { ColorValue, OfficeLayout } from '../types.js';
-import { TILE_SIZE, TileType } from '../types.js';
+import { CharacterState, TILE_SIZE } from '../types.js';
 import { renderMatrixEffect } from './matrixEffect.js';
 import type { OfficeState } from './officeState.js';
 import { getPetSpriteData } from './petEntity.js';
 import { isGhostHeadlessAgentsEnabled, renderVisitorMarker } from './renderer.js';
 import { roomCharacterFrame, roomCharacterHeadroom } from './roomCharacterFrame.js';
 import { roomFurnitureArt, roomFurnitureSpriteBounds } from './roomFurnitureArt.js';
+import { drawRoomShell, roomPolygon } from './roomShell.js';
 
-const WALL_HEIGHT = 38;
-const LOW_WALL_HEIGHT = 8;
-const PLATFORM_DEPTH = 6;
-
-function polygon(ctx: CanvasRenderingContext2D, points: RoomPoint[], color: string): void {
-  ctx.beginPath();
-  ctx.moveTo(points[0].x, points[0].y);
-  for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
-  ctx.closePath();
-  ctx.fillStyle = color;
-  ctx.fill();
-}
-
-function edgeBand(
-  ctx: CanvasRenderingContext2D,
-  a: RoomPoint,
-  b: RoomPoint,
-  bottom: number,
-  top: number,
-  color: string,
-): void {
-  polygon(
-    ctx,
-    [
-      { x: a.x, y: a.y - bottom },
-      { x: b.x, y: b.y - bottom },
-      { x: b.x, y: b.y - top },
-      { x: a.x, y: a.y - top },
-    ],
-    color,
-  );
-}
-
-function wall(
-  ctx: CanvasRenderingContext2D,
-  a: RoomPoint,
-  b: RoomPoint,
-  height: number,
-  zoom: number,
-  lit: boolean,
-): void {
-  const colors = lit ? ROOM_COLORS.lightWall : ROOM_COLORS.shadedWall;
-  edgeBand(ctx, a, b, 0, height * zoom, colors.panel);
-  edgeBand(ctx, a, b, 0, 4 * zoom, colors.skirting);
-  edgeBand(ctx, a, b, 4 * zoom, 5 * zoom, colors.trim);
-  edgeBand(ctx, a, b, (height - 2) * zoom, height * zoom, colors.cap);
-  if (height > 9) {
-    ctx.fillStyle = colors.seam;
-    ctx.fillRect(Math.round(a.x), Math.round(a.y - (height - 3) * zoom), zoom, (height - 9) * zoom);
-  }
-}
-
-function carpetColor(color: ColorValue | undefined): string {
-  if (!color) return ROOM_COLORS.rug;
-  const channels = hslToRgb(color.h, color.s / 200, 0.46);
-  return `#${channels.map((channel) => channel.toString(16).padStart(2, '0')).join('')}`;
-}
-
-function drawGround(
-  ctx: CanvasRenderingContext2D,
-  layout: OfficeLayout,
-  projection: RoomProjection,
-  zoom: number,
-  hovered: { col: number; row: number } | null,
-): void {
-  const { cols, rows, tiles, carpetTiles } = layout;
-  const at = (col: number, row: number) =>
-    col >= 0 && col < cols && row >= 0 && row < rows ? tiles[row * cols + col] : TileType.VOID;
-  const halfWidth = TILE_SIZE * zoom * ROOM_GROUND_SCALE;
-  const halfHeight = halfWidth / 2;
-  const walls: Array<() => void> = [];
-  const { width, height } = ctx.canvas;
-  ctx.lineWidth = Math.max(1, Math.floor(zoom / 2));
-  for (let row = 0; row < rows; row++) {
-    for (let col = 0; col < cols; col++) {
-      const tile = at(col, row);
-      if (tile === TileType.VOID) continue;
-      const frontX = at(col + 1, row);
-      const frontY = at(col, row + 1);
-      const backX = at(col - 1, row);
-      const backY = at(col, row - 1);
-      const top = projection.toScreen(col * TILE_SIZE, row * TILE_SIZE);
-      if (
-        top.x + halfWidth < 0 ||
-        top.x - halfWidth > width ||
-        top.y + 2 * halfHeight + PLATFORM_DEPTH * zoom < 0 ||
-        top.y - WALL_HEIGHT * zoom > height
-      ) {
-        continue;
-      }
-      const right = { x: top.x + halfWidth, y: top.y + halfHeight };
-      const bottom = { x: top.x, y: top.y + 2 * halfHeight };
-      const left = { x: top.x - halfWidth, y: top.y + halfHeight };
-      const face = [top, right, bottom, left];
-      if (frontX === TileType.VOID) {
-        edgeBand(ctx, right, bottom, -PLATFORM_DEPTH * zoom, 0, ROOM_COLORS.platformRight);
-      }
-      if (frontY === TileType.VOID) {
-        edgeBand(ctx, left, bottom, -PLATFORM_DEPTH * zoom, 0, ROOM_COLORS.platformLeft);
-      }
-
-      const rug = carpetTiles?.[row * cols + col];
-      const floorColor =
-        ROOM_COLORS.floor[tile - 1]?.[(row + col) % 2] ?? ROOM_COLORS.floorFallback;
-      polygon(
-        ctx,
-        face,
-        tile === TileType.WALL ? ROOM_COLORS.wallBase : rug ? carpetColor(rug.color) : floorColor,
-      );
-      ctx.strokeStyle = ROOM_COLORS.floorSeam;
-      ctx.stroke();
-      if (hovered?.col === col && hovered.row === row) {
-        polygon(ctx, face, ROOM_COLORS.hoverFill);
-        ctx.strokeStyle = ROOM_COLORS.hoverBorder;
-        ctx.stroke();
-      }
-
-      if (tile !== TileType.WALL) continue;
-      const northWall = backY === TileType.VOID && frontY !== TileType.VOID;
-      const westWall = backX === TileType.VOID && frontX !== TileType.VOID;
-      if (northWall) walls.push(() => wall(ctx, top, right, WALL_HEIGHT, zoom, true));
-      if (westWall) walls.push(() => wall(ctx, top, left, WALL_HEIGHT, zoom, false));
-      if (!northWall && !westWall) {
-        const vertical = backY === TileType.WALL || frontY === TileType.WALL;
-        walls.push(() => wall(ctx, top, vertical ? left : right, LOW_WALL_HEIGHT, zoom, !vertical));
-      }
-    }
-  }
-  for (const draw of walls) draw();
+function footShadow(ctx: CanvasRenderingContext2D, foot: RoomPoint, zoom: number): void {
+  const x = Math.round(foot.x);
+  const y = Math.round(foot.y);
+  ctx.fillStyle = ROOM_COLORS.contactShadow;
+  ctx.fillRect(x - 5 * zoom, y - zoom, 10 * zoom, 2 * zoom);
+  ctx.fillRect(x - 3 * zoom, y - 2 * zoom, 6 * zoom, 4 * zoom);
 }
 
 /** Visitor view of the office layout, with original isometric sprites. */
@@ -167,11 +42,30 @@ export function renderRoom(
   const hover = office.hoveredTile;
   const walkHover =
     hover && isWalkable(hover.col, hover.row, office.tileMap, office.blockedTiles) ? hover : null;
-  drawGround(ctx, office.getLayout(), projection, zoom, walkHover);
+  const layout = office.getLayout();
+  drawRoomShell(ctx, layout, projection, zoom, walkHover);
 
   const sprites: Array<{ depth: number; draw: () => void }> = [];
   const overlays: Array<() => void> = [];
-  for (const art of roomFurnitureArt(office.furniture, office.getLayout())) {
+  for (const art of roomFurnitureArt(office.furniture, layout)) {
+    const model = art.model;
+    const ground = model?.sprite.footprint;
+    if (model && ground) {
+      const left = model.x + ground.left;
+      const right = model.x + ground.right;
+      const top = model.y + ground.top;
+      const bottom = model.y + ground.bottom;
+      roomPolygon(
+        ctx,
+        [
+          projection.toScreen(left, top),
+          projection.toScreen(right, top),
+          projection.toScreen(right, bottom),
+          projection.toScreen(left, bottom),
+        ],
+        ROOM_COLORS.contactShadow,
+      );
+    }
     const { x, y, width, depth } = roomFurnitureSpriteBounds(art, projection, zoom);
     const image = getCachedSprite(art.pixels, zoom);
     sprites.push({
@@ -201,6 +95,9 @@ export function renderRoom(
     const hovered = character.id === office.hoveredAgentId;
     const alpha =
       character.isHeadless && isGhostHeadlessAgentsEnabled() ? HEADLESS_CHARACTER_ALPHA : 1;
+    if (!character.matrixEffect && character.state !== CharacterState.TYPE) {
+      footShadow(ctx, foot, zoom);
+    }
     sprites.push({
       depth,
       draw: () => {
@@ -232,6 +129,7 @@ export function renderRoom(
     const x = Math.round(point.x - image.width / 2);
     const y = Math.round(point.y - image.height);
     const depth = projection.toScreen(pet.x, pet.y + TILE_SIZE / 2).y;
+    footShadow(ctx, point, zoom);
     sprites.push({ depth, draw: () => ctx.drawImage(image, x, y) });
     if (pet.bubbleType === 'heart') {
       overlays.push(() => {
