@@ -1,6 +1,6 @@
 # External Asset Directories
 
-Pixel Agents supports loading furniture assets from directories outside the extension. This lets you use custom or third-party pixel art asset packs alongside the built-in furniture.
+Pixel Agents loads character, pet, and furniture art from directories on the office host. For an office running on a Mac mini, choose a folder on the mini.
 
 ## Adding an External Directory
 
@@ -29,6 +29,19 @@ my-assets/
 ```
 
 Each furniture item gets its own subfolder containing a `manifest.json` and one or more PNG sprite files. The folder name doesn't matter — the `id` field in the manifest is what identifies the item.
+
+## Character sheets
+
+Place transparent PNG sheets in `assets/characters/`. Use `char_0.png`, `char_1.png`, etc. to add choices. Use `preset_0.png` through `preset_5.png` to dress the original six profiles in place. These follow a profile through a rename or reorder. Wardrobe edits take precedence. Removing the directory restores the bundled appearance.
+
+Full-resolution isometric art uses **64 × 96 pixels per frame**. Supply three rows facing front-left, rear-right, and front-right. Center grounded feet at the bottom of each cell and place the seated hip at (32, 72). The missing rear-left direction mirrors rear-right. The office displays these source pixels directly.
+
+| PNG dimensions | Frames in each row, left to right                                          |
+| -------------- | -------------------------------------------------------------------------- |
+| 512 × 288      | Walk A, stand, walk C, type A, type B, read A, read B, sit                 |
+| 832 × 288      | The same eight, followed by walk B, walk D, and three standing wave frames |
+
+The office also supports the original 112 × 96 and 128 × 96 sheets with 16 × 32 cells.
 
 ## Manifest Format
 
@@ -144,33 +157,33 @@ Use `"rotationScheme": "3-way-mirror"` and add `"mirrorSide": true` to the side 
 
 ### Root fields (all manifests)
 
-| Field | Type | Description |
-|---|---|---|
-| `id` | string | Unique identifier. Must be unique across all loaded assets |
-| `name` | string | Display name shown in the palette |
-| `category` | string | Palette category: `desks`, `chairs`, `electronics`, `storage`, `decor`, `misc`, `wall` |
-| `type` | `"asset"` \| `"group"` | Single sprite or grouped (rotation/state/animation) |
-| `canPlaceOnWalls` | boolean | Whether the item can be placed on wall tiles |
-| `canPlaceOnSurfaces` | boolean | Whether the item can be placed on top of desk surfaces |
-| `backgroundTiles` | number | Number of floor tiles the sprite extends below its footprint (for tall sprites) |
+| Field                | Type                   | Description                                                                            |
+| -------------------- | ---------------------- | -------------------------------------------------------------------------------------- |
+| `id`                 | string                 | Unique identifier. Must be unique across all loaded assets                             |
+| `name`               | string                 | Display name shown in the palette                                                      |
+| `category`           | string                 | Palette category: `desks`, `chairs`, `electronics`, `storage`, `decor`, `misc`, `wall` |
+| `type`               | `"asset"` \| `"group"` | Single sprite or grouped (rotation/state/animation)                                    |
+| `canPlaceOnWalls`    | boolean                | Whether the item can be placed on wall tiles                                           |
+| `canPlaceOnSurfaces` | boolean                | Whether the item can be placed on top of desk surfaces                                 |
+| `backgroundTiles`    | number                 | Number of floor tiles the sprite extends below its footprint (for tall sprites)        |
 
 ### Asset-only fields
 
-| Field | Type | Description |
-|---|---|---|
-| `file` | string | PNG filename relative to the item folder |
-| `width` | number | Sprite width in pixels |
-| `height` | number | Sprite height in pixels |
+| Field        | Type   | Description                              |
+| ------------ | ------ | ---------------------------------------- |
+| `file`       | string | PNG filename relative to the item folder |
+| `width`      | number | Sprite width in pixels                   |
+| `height`     | number | Sprite height in pixels                  |
 | `footprintW` | number | Footprint width in tiles (1 tile = 16px) |
-| `footprintH` | number | Footprint height in tiles |
+| `footprintH` | number | Footprint height in tiles                |
 
 ### Group fields
 
-| Field | Type | Description |
-|---|---|---|
-| `groupType` | `"rotation"` \| `"state"` \| `"animation"` | How members relate to each other |
-| `rotationScheme` | `"2-way"` \| `"3-way-mirror"` \| `"4-way"` | Rotation variants available |
-| `members` | array | Child assets or nested groups |
+| Field            | Type                                       | Description                      |
+| ---------------- | ------------------------------------------ | -------------------------------- |
+| `groupType`      | `"rotation"` \| `"state"` \| `"animation"` | How members relate to each other |
+| `rotationScheme` | `"2-way"` \| `"3-way-mirror"` \| `"4-way"` | Rotation variants available      |
+| `members`        | array                                      | Child assets or nested groups    |
 
 ### Member orientation values
 

@@ -51,6 +51,13 @@ export async function loadExternalCharacters(
   const chars: LoadedCharacterSprites = {
     characters: loaded.flatMap((extra) => extra?.characters ?? []),
   };
+  // The most recently added directory wins for a given built-in profile.
+  const presets = new Map(
+    loaded.flatMap((extra) =>
+      (extra?.presets ?? []).map((preset) => [preset.profileId, preset] as const),
+    ),
+  );
+  if (presets.size) chars.presets = [...presets.values()];
   // Sync the server-side palette count so assignPaletteIfNeeded and the
   // saveAgentSeats guard use the dynamic ceiling. Centralizing here means every
   // entry point -- standalone startup, standalone reload, VS Code startup,

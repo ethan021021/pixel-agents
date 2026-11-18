@@ -569,8 +569,8 @@ components:
     CharacterSpritesLoaded:
       description: |
         Pre-colored character sprite sets from external asset directories (char_N.png),
-        worn by the palettes after the character profiles. Possibly empty; sent once at
-        startup and again when the directories change.
+        worn by the palettes after the character profiles. Optional preset sheets dress
+        the matching bundled profiles in place. Sent at startup and on asset reload.
       type: object
       additionalProperties: false
       required: [type, characters]
@@ -581,6 +581,20 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/CharacterSpriteSet'
+        presets:
+          type: array
+          items:
+            $ref: '#/components/schemas/PresetCharacterSprites'
+
+    PresetCharacterSprites:
+      type: object
+      additionalProperties: false
+      required: [profileId, sprites]
+      properties:
+        profileId:
+          type: string
+        sprites:
+          $ref: '#/components/schemas/CharacterSpriteSet'
 
     PetSpritesLoaded:
       description: Pet sprite frame sets and display names, sent once after webviewReady (between characterSpritesLoaded and floorTilesLoaded).
@@ -1973,7 +1987,8 @@ components:
     CharacterSpriteSet:
       description: |
         One palette's character sprites as 3D hex-string arrays (frames × rows × pixels).
-        Three direction sets per palette: down, up, right (left is rendered as flipped right).
+        Three direction sets per palette: down, up, right. In an isometric native sheet,
+        the missing rear-left direction mirrors the rear-right view.
       type: object
       additionalProperties: false
       required: [down, up, right]

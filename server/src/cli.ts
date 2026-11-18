@@ -401,7 +401,7 @@ async function main(): Promise<void> {
       assetCache.characters = characters;
       assetCache.pets = pets;
       assetCache.furniture = furniture;
-      send({ type: 'characterSpritesLoaded', characters: characters.characters });
+      store.broadcast({ type: 'characterSpritesLoaded', ...characters });
       if (pets) {
         send({
           type: 'petSpritesLoaded',

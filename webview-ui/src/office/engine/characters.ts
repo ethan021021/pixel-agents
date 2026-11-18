@@ -1,10 +1,15 @@
+import { isRoomSheetFrame } from '../../../../core/src/assets/characterSheet.js';
+import { ROOM_SHEET_FRAME } from '../../../../core/src/assets/constants.js';
 import {
+  CHARACTER_SITTING_OFFSET_PX,
   DEFAULT_MAX_CONTEXT_TOKENS,
   HELPER_FOLLOW_RADIUS_TILES,
   HELPER_STAND_UP_DELAY_SEC,
   SEAT_REST_MAX_SEC,
   SEAT_REST_MIN_SEC,
   TYPE_FRAME_DURATION_SEC,
+  VISITOR_WAVE_BEAT_SEC,
+  VISITOR_WAVE_SEC,
   WALK_FRAME_DURATION_SEC,
   WALK_SPEED_PX_PER_SEC,
   WANDER_MOVES_BEFORE_REST_MAX,
@@ -13,7 +18,7 @@ import {
   WANDER_PAUSE_MIN_SEC,
 } from '../../constants.js';
 import { findPath } from '../layout/tileMap.js';
-import type { CharacterSprites } from '../sprites/spriteData.js';
+import { type CharacterSprites, getCharacterSprites } from '../sprites/spriteData.js';
 import { isReadingToolName } from '../toolUtils.js';
 import type { Character, Seat, SpriteData, TileType as TileTypeVal } from '../types.js';
 import { CharacterState, Direction, TILE_SIZE } from '../types.js';
@@ -434,10 +439,34 @@ export function getCharacterSprite(ch: Character, sprites: CharacterSprites): Sp
     case CharacterState.WALK:
       return sprites.walk[ch.dir][ch.frame % 4];
     case CharacterState.IDLE:
-      return sprites.walk[ch.dir][1];
+      if (ch.visitorWave && sprites.wave) {
+        const beat = Math.floor((VISITOR_WAVE_SEC - ch.visitorWave) / VISITOR_WAVE_BEAT_SEC);
+        return sprites.wave[ch.dir][Math.max(0, beat) % 3];
+      }
+      return sprites.standing?.[ch.dir] ?? sprites.walk[ch.dir][1];
     default:
       return sprites.walk[ch.dir][1];
   }
+}
+
+/** The flat office draws and picks an imported character in the same world coordinates. */
+export function flatCharacterFrame(ch: Character) {
+  const sprites = getCharacterSprites(ch.palette, ch.repeat, ch.blinkShut > 0);
+  const pixels = getCharacterSprite(ch, sprites);
+  const nativeScale = isRoomSheetFrame(pixels[0].length, pixels.length)
+    ? ROOM_SHEET_FRAME.scale
+    : 1;
+  const width = pixels[0].length / nativeScale;
+  const height = pixels.length / nativeScale;
+  const sittingOffset = ch.state === CharacterState.TYPE ? CHARACTER_SITTING_OFFSET_PX : 0;
+  return {
+    pixels,
+    nativeScale,
+    x: ch.x - width / 2,
+    y: ch.y + sittingOffset - height,
+    width,
+    height,
+  };
 }
 
 /** Sit out a usual rest in the chair before standing up to wander. */

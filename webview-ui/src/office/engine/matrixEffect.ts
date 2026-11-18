@@ -42,8 +42,17 @@ export function renderMatrixEffect(
   drawX: number,
   drawY: number,
   zoom: number,
+  nativeScale = 1,
 ): void {
-  renderMatrixGrid(ctx, ch, spriteData, drawX, drawY, zoom, flatGrid);
+  const grid =
+    nativeScale === 1
+      ? flatGrid
+      : {
+          cols: spriteData[0].length,
+          rows: spriteData.length,
+          trail: MATRIX_TRAIL_LENGTH * nativeScale,
+        };
+  renderMatrixGrid(ctx, ch, spriteData, drawX, drawY, zoom, grid);
 }
 
 /** Draw the full character grid in a reusable buffer for the room renderer. */

@@ -28,7 +28,7 @@ import {
 import { clearsTileCorners, findPath, getWalkableTiles, isWalkable } from '../layout/tileMap.js';
 import { facingOffset, pairWorkstations } from '../layout/workstations.js';
 import { getPetCount, getPetName } from '../sprites/petSpriteData.js';
-import { getLoadedCharacterCount } from '../sprites/spriteData.js';
+import { getCharacterRoomSource, getLoadedCharacterCount } from '../sprites/spriteData.js';
 import type {
   Character,
   FurnitureInstance,
@@ -43,6 +43,7 @@ import { CharacterState, Direction, PetState, TILE_SIZE } from '../types.js';
 import { tickBlink } from './blink.js';
 import {
   createCharacter,
+  flatCharacterFrame,
   restInChair,
   stepCharacterWalk,
   updateCharacter,
@@ -1649,6 +1650,15 @@ export class OfficeState {
     for (const ch of chars) {
       // Skip characters that are despawning
       if (ch.matrixEffect === 'despawn') continue;
+      if (getCharacterRoomSource(ch.palette) === 'external') {
+        const frame = flatCharacterFrame(ch);
+        if (frame.nativeScale > 1) {
+          const x = Math.floor((worldX - frame.x) * frame.nativeScale);
+          const y = Math.floor((worldY - frame.y) * frame.nativeScale);
+          if (frame.pixels[y]?.[x]) return ch.id;
+          continue;
+        }
+      }
       // Character sprite is 16x24, anchored bottom-center
       // Apply sitting offset to match visual position
       const sittingOffset = ch.state === CharacterState.TYPE ? CHARACTER_SITTING_OFFSET_PX : 0;

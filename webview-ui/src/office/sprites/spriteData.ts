@@ -1,3 +1,5 @@
+import { isRoomSheetFrame } from '../../../../core/src/assets/characterSheet.js';
+import { ROOM_ANIMATED_FRAME_COUNT } from '../../../../core/src/assets/constants.js';
 import { SEATED_FRAME, SHEET_FRAMES } from '../../../../core/src/assets/seatedFrame.js';
 import { DEFAULT_CHARACTER_PROFILES } from '../../../../core/src/defaultCharacterProfiles.js';
 import type { Direction, SpriteData } from '../types.js';
@@ -115,6 +117,9 @@ function flipSpriteHorizontal(sprite: SpriteData): SpriteData {
 
 export interface CharacterSprites {
   walk: Record<Direction, [SpriteData, SpriteData, SpriteData, SpriteData]>;
+  /** Extended sheets give a four-phase stride its own neutral standing pose. */
+  standing?: Record<Direction, SpriteData>;
+  wave?: Record<Direction, [SpriteData, SpriteData, SpriteData]>;
   typing: Record<Direction, [SpriteData, SpriteData]>;
   reading: Record<Direction, [SpriteData, SpriteData]>;
   /** In the chair with nothing to do. */
@@ -159,41 +164,37 @@ export function getCharacterSprites(
     const d = char.down;
     const u = char.up;
     const rt = char.right;
+    // Moving left in the isometric room goes up-screen; the opposite rear view
+    // comes from the authored up row. Classic sheets use the side-facing right row.
+    const native = isRoomSheetFrame(rt[0][0].length, rt[0].length);
+    const mirrorRow = native ? u : rt;
     const flip = flipSpriteHorizontal;
 
     // A row's sprites at an animation's frames, one sprite per frame (same length).
     type Frames<F extends readonly number[]> = { -readonly [K in keyof F]: SpriteData };
     const at = <F extends readonly number[]>(row: SpriteData[], frames: F) =>
       frames.map((i) => row[i]) as Frames<F>;
-    const flipped = <F extends readonly number[]>(frames: F) =>
-      frames.map((i) => flip(rt[i])) as Frames<F>;
-    const { walk, type, read } = SHEET_FRAMES;
+    const facingFrames = <F extends readonly number[]>(frames: F) => ({
+      [Dir.DOWN]: at(d, frames),
+      [Dir.UP]: at(u, frames),
+      [Dir.RIGHT]: at(rt, frames),
+      [Dir.LEFT]: frames.map((i) => flip(mirrorRow[i])) as Frames<F>,
+    });
+    const singleFrame = (index: number) => ({
+      [Dir.DOWN]: d[index],
+      [Dir.UP]: u[index],
+      [Dir.RIGHT]: rt[index],
+      [Dir.LEFT]: flip(mirrorRow[index]),
+    });
+    const extended = rt.length === ROOM_ANIMATED_FRAME_COUNT;
 
     sprites = {
-      walk: {
-        [Dir.DOWN]: at(d, walk),
-        [Dir.UP]: at(u, walk),
-        [Dir.RIGHT]: at(rt, walk),
-        [Dir.LEFT]: flipped(walk),
-      },
-      typing: {
-        [Dir.DOWN]: at(d, type),
-        [Dir.UP]: at(u, type),
-        [Dir.RIGHT]: at(rt, type),
-        [Dir.LEFT]: flipped(type),
-      },
-      reading: {
-        [Dir.DOWN]: at(d, read),
-        [Dir.UP]: at(u, read),
-        [Dir.RIGHT]: at(rt, read),
-        [Dir.LEFT]: flipped(read),
-      },
-      seated: {
-        [Dir.DOWN]: d[SEATED_FRAME],
-        [Dir.UP]: u[SEATED_FRAME],
-        [Dir.RIGHT]: rt[SEATED_FRAME],
-        [Dir.LEFT]: flip(rt[SEATED_FRAME]),
-      },
+      walk: facingFrames(extended ? ([0, 8, 2, 9] as const) : SHEET_FRAMES.walk),
+      standing: native ? singleFrame(1) : undefined,
+      wave: extended ? facingFrames([10, 11, 12] as const) : undefined,
+      typing: facingFrames(SHEET_FRAMES.type),
+      reading: facingFrames(SHEET_FRAMES.read),
+      seated: singleFrame(SEATED_FRAME),
     };
   } else {
     // Fallback: return transparent placeholder sprites (16×32)

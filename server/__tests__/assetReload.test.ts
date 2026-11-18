@@ -54,6 +54,20 @@ describe('assetReload helpers', () => {
     expect(getPaletteCount()).toBe(8);
   });
 
+  it('uses the latest preset sheet without allocating another agent palette', async () => {
+    const frames = { down: [], up: [], right: [] };
+    const first = { profileId: 'char-1', sprites: frames };
+    const second = { profileId: 'char-1', sprites: { ...frames, down: [[['']]] } };
+    vi.mocked(assetLoader.loadExternalCharacterSprites)
+      .mockResolvedValueOnce({ characters: [], presets: [first] })
+      .mockResolvedValueOnce({ characters: [], presets: [second] });
+    expect(await loadExternalCharacters(['first', 'second'])).toEqual({
+      characters: [],
+      presets: [second],
+    });
+    expect(getPaletteCount()).toBe(6);
+  });
+
   it('loadAllPets uses the bundled loader for root and the external loader for extras (asymmetry)', async () => {
     const result = await loadAllPets('root', ['e1']);
 

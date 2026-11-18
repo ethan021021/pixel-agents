@@ -1,23 +1,32 @@
 import type { RefObject, WheelEvent } from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 
+import { CHAR_FRAME_H } from '../../../core/src/assets/constants.js';
+import { SHEET_FRAMES } from '../../../core/src/assets/seatedFrame.js';
 import type { CharacterProfile } from '../../../core/src/characterProfiles.js';
 import { MAX_CHARACTER_PROFILES } from '../../../core/src/characterProfiles.js';
 import { useCast } from '../characters/castStore.js';
 import { characterLabel } from '../characters/profiles.js';
 import { rosterOrder } from '../characters/recent.js';
 import type { CharacterRenderer } from '../characters/renderer.js';
+import { cssSize, devicePixels } from '../characters/ui/pixelCanvas.js';
 import { SpriteCanvas } from '../characters/ui/SpriteCanvas.js';
 import { CHARACTER_ANIM_MS, CHARACTER_PICKER_SPRITE_SCALE } from '../constants.js';
 import { useDevicePixelRatio } from '../hooks/useDevicePixelRatio.js';
 import { useLongPress } from '../hooks/useLongPress.js';
+import { getCachedSprite } from '../office/sprites/spriteCache.js';
+import {
+  type CharacterSprites,
+  getCharacterRoomSource,
+  getCharacterSprites,
+  getCharacterTemplatesVersion,
+  subscribeCharacterTemplates,
+} from '../office/sprites/spriteData.js';
+import { Direction, type SpriteData } from '../office/types.js';
 import { PixelIcon } from './ui/PixelIcon.js';
 
-/** The sheet's walk cycle, as the Characters view's stage plays it. */
-const WALK_FRAMES = [0, 1, 2, 1];
-
-/** The walk frame to show: cycles while `walking`, back to standing when it stops. */
-function useWalkFrame(walking: boolean): number {
+/** Index into the four-part walk cycle while the card is hovered. */
+function useWalkStep(walking: boolean): number {
   const [step, setStep] = useState(0);
   useEffect(() => {
     if (!walking) return;
@@ -27,7 +36,7 @@ function useWalkFrame(walking: boolean): number {
       setStep(0);
     };
   }, [walking]);
-  return WALK_FRAMES[step % WALK_FRAMES.length];
+  return step % SHEET_FRAMES.walk.length;
 }
 
 interface CharacterRowProps {
@@ -192,6 +201,7 @@ function RosterCards({
   dpr: number;
 }) {
   const cast = useCast();
+  useSyncExternalStore(subscribeCharacterTemplates, getCharacterTemplatesVersion);
   return (
     <>
       {cast.profiles.length < MAX_CHARACTER_PROFILES && (
@@ -211,6 +221,9 @@ function RosterCards({
           index={index}
           profile={cast.profiles[index]}
           renderer={cast.renderer}
+          roomSprites={
+            getCharacterRoomSource(index) === 'external' ? getCharacterSprites(index) : undefined
+          }
           dpr={dpr}
           onPick={onPick}
           onEdit={onEdit}
@@ -267,18 +280,27 @@ interface CharacterCardProps {
   index: number;
   profile: CharacterProfile;
   renderer: CharacterRenderer | null;
+  roomSprites?: CharacterSprites;
   dpr: number;
   onPick: (index: number) => void;
   onEdit: (index: number) => void;
 }
 
-function CharacterCard({ index, profile, renderer, dpr, onPick, onEdit }: CharacterCardProps) {
+function CharacterCard({
+  index,
+  profile,
+  renderer,
+  roomSprites,
+  dpr,
+  onPick,
+  onEdit,
+}: CharacterCardProps) {
   const longPress = useLongPress(() => onEdit(index));
   const label = characterLabel(profile, index);
   // A mouse over the card walks the character in place. Mouse only: a tap's
   // emulated hover would leave it walking until the next tap elsewhere.
   const [hovered, setHovered] = useState(false);
-  const frame = useWalkFrame(hovered);
+  const step = useWalkStep(hovered);
   return (
     <div
       className="group relative shrink-0 flex"
@@ -297,12 +319,23 @@ function CharacterCard({ index, profile, renderer, dpr, onPick, onEdit }: Charac
         onContextMenu={(e) => e.preventDefault()}
         className="w-56 flex flex-col items-center justify-end gap-2 py-4 px-2 bg-bg-thumb border-2 border-transparent rounded-none cursor-pointer hover:border-border active:border-accent-bright select-none [-webkit-touch-callout:none]"
       >
-        <SpriteCanvas
-          sheet={renderer?.sheet(profile) ?? null}
-          view={{ kind: 'frame', facing: 'down', frame }}
-          scale={CHARACTER_PICKER_SPRITE_SCALE}
-          dpr={dpr}
-        />
+        {roomSprites ? (
+          <RoomRosterPreview
+            sprite={
+              hovered
+                ? roomSprites.walk[Direction.DOWN][step]
+                : (roomSprites.standing?.[Direction.DOWN] ?? roomSprites.walk[Direction.DOWN][1])
+            }
+            dpr={dpr}
+          />
+        ) : (
+          <SpriteCanvas
+            sheet={renderer?.sheet(profile) ?? null}
+            view={{ kind: 'frame', facing: 'down', frame: SHEET_FRAMES.walk[step] }}
+            scale={CHARACTER_PICKER_SPRITE_SCALE}
+            dpr={dpr}
+          />
+        )}
         <span className="max-w-[7ch] overflow-hidden text-ellipsis whitespace-nowrap text-sm text-text-muted">
           {label}
         </span>
@@ -320,5 +353,33 @@ function CharacterCard({ index, profile, renderer, dpr, onPick, onEdit }: Charac
         <PixelIcon name="pencil" />
       </button>
     </div>
+  );
+}
+
+/** Fit the entire imported frame into the roster's usual height. Keeping its
+ * transparent margins fixes the feet in place throughout the walk cycle. */
+function RoomRosterPreview({ sprite, dpr }: { sprite: SpriteData; dpr: number }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const height = CHAR_FRAME_H * devicePixels(CHARACTER_PICKER_SPRITE_SCALE, dpr);
+  const width = Math.round((height * sprite[0].length) / sprite.length);
+  useLayoutEffect(() => {
+    const ctx = ref.current?.getContext('2d');
+    if (!ctx) return;
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, width, height);
+    ctx.drawImage(getCachedSprite(sprite, 1), 0, 0, width, height);
+  }, [sprite, width, height]);
+  return (
+    <canvas
+      ref={ref}
+      width={width}
+      height={height}
+      style={{
+        width: cssSize(width, 1, dpr),
+        height: cssSize(height, 1, dpr),
+        imageRendering: 'pixelated',
+      }}
+      aria-hidden="true"
+    />
   );
 }

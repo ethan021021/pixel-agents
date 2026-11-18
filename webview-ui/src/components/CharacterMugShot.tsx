@@ -1,5 +1,7 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 
+import { isRoomSheetFrame } from '../../../core/src/assets/characterSheet.js';
+import { ROOM_SHEET_FRAME } from '../../../core/src/assets/constants.js';
 import {
   MUGSHOT_CROP_LEFT_COL,
   MUGSHOT_CROP_SIDE_PX,
@@ -56,15 +58,23 @@ export function CharacterMugShot({
     const side = MUGSHOT_CROP_SIDE_PX * zoom;
     const roomCastIndex = roomPortrait ? getCharacterRoomCastIndex(palette) : undefined;
     const room = roomCastIndex !== undefined;
+    const frames = getCharacterSprites(palette, repeat);
     const front = room
       ? roomCastSprite(roomCastIndex, Direction.DOWN, false, undefined, repeat)
-      : getCharacterSprites(palette, repeat).walk[Direction.DOWN][0];
-    const full = getCachedSprite(front, room ? 1 : zoom);
-    const sourceSide = room ? MUGSHOT_CROP_SIDE_PX * ROOM_CHARACTER_NATIVE_SCALE : side;
-    const left = room ? Math.floor((full.width - sourceSide) / 2) : MUGSHOT_CROP_LEFT_COL * zoom;
-    const top = room
-      ? Math.max(0, front.findIndex((row) => row.some(Boolean)) - ROOM_CHARACTER_NATIVE_SCALE)
-      : cropTop * zoom;
+      : (frames.standing?.[Direction.DOWN] ?? frames.walk[Direction.DOWN][0]);
+    const nativeScale = room
+      ? ROOM_CHARACTER_NATIVE_SCALE
+      : isRoomSheetFrame(front[0].length, front.length)
+        ? ROOM_SHEET_FRAME.scale
+        : 1;
+    const full = getCachedSprite(front, 1);
+    const sourceSide = MUGSHOT_CROP_SIDE_PX * nativeScale;
+    const left =
+      nativeScale > 1 ? Math.floor((full.width - sourceSide) / 2) : MUGSHOT_CROP_LEFT_COL;
+    const top =
+      nativeScale > 1
+        ? Math.max(0, front.findIndex((row) => row.some(Boolean)) - nativeScale)
+        : cropTop;
     canvas.width = side;
     canvas.height = side;
     ctx.imageSmoothingEnabled = false;

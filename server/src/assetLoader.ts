@@ -30,6 +30,8 @@ import type {
   PetManifest,
   PetSpriteFrames,
 } from '../../core/src/assets/types.js';
+import { DEFAULT_CHARACTER_PROFILES } from '../../core/src/defaultCharacterProfiles.js';
+import type { PresetCharacterSprites } from '../../core/src/messages.js';
 export type { CharacterDirectionSprites } from '../../core/src/assets/types.js';
 export type { PetManifest, PetSpriteFrames } from '../../core/src/assets/types.js';
 
@@ -464,13 +466,13 @@ export function sendFloorTilesToWebview(
 // ── Character sprite loading ────────────────────────────────
 
 export interface LoadedCharacterSprites {
-  /** Pre-colored characters, each with 7 frames per direction */
   characters: CharacterDirectionSprites[];
+  presets?: PresetCharacterSprites[];
 }
 
 /**
  * Load character sprites from an external asset directory.
- * Scans assets/characters/ for char_N.png files (any N, sorted numerically).
+ * char_N.png adds a character, preset_N.png dresses the Nth original profile.
  * Returns null if no characters found.
  */
 export async function loadExternalCharacterSprites(
@@ -483,11 +485,14 @@ export async function loadExternalCharacterSprites(
     }
 
     const entries = fs.readdirSync(charDir);
-    const charFiles: { index: number; filename: string }[] = [];
+    const charFiles: { index: number; filename: string; preset: boolean }[] = [];
     for (const entry of entries) {
-      const match = /^char_(\d+)\.png$/i.exec(entry);
+      const match = /^(char|preset)_(\d+)\.png$/i.exec(entry);
       if (match) {
-        charFiles.push({ index: parseInt(match[1], 10), filename: entry });
+        const index = Number(match[2]);
+        const preset = match[1].toLowerCase() === 'preset';
+        if (!preset || DEFAULT_CHARACTER_PROFILES[index])
+          charFiles.push({ index, filename: entry, preset });
       }
     }
 
@@ -498,7 +503,8 @@ export async function loadExternalCharacterSprites(
     charFiles.sort((a, b) => a.index - b.index);
 
     const characters: CharacterDirectionSprites[] = [];
-    for (const { filename } of charFiles) {
+    const presets: PresetCharacterSprites[] = [];
+    for (const { filename, index, preset } of charFiles) {
       const filePath = path.join(charDir, filename);
       const resolvedFile = path.resolve(filePath);
       const resolvedDir = path.resolve(charDir);
@@ -508,7 +514,9 @@ export async function loadExternalCharacterSprites(
       }
       try {
         const pngBuffer = fs.readFileSync(filePath);
-        characters.push(decodeCharacterPng(pngBuffer));
+        const sprites = decodeCharacterPng(pngBuffer);
+        if (preset) presets.push({ profileId: DEFAULT_CHARACTER_PROFILES[index].id!, sprites });
+        else characters.push(sprites);
       } catch (err) {
         console.warn(
           `  [AssetLoader] ⚠️  Error loading character ${filename}: ${err instanceof Error ? err.message : err}`,
@@ -516,14 +524,14 @@ export async function loadExternalCharacterSprites(
       }
     }
 
-    if (characters.length === 0) {
+    if (characters.length === 0 && presets.length === 0) {
       return null;
     }
 
     console.log(
-      `[AssetLoader] ✅ Loaded ${characters.length} external character sprites from ${externalRoot}`,
+      `[AssetLoader] ✅ Loaded ${characters.length} extra characters and ${presets.length} preset sheets from ${externalRoot}`,
     );
-    return { characters };
+    return presets.length ? { characters, presets } : { characters };
   } catch (err) {
     console.error(
       `[AssetLoader] ❌ Error loading external character sprites: ${err instanceof Error ? err.message : err}`,
@@ -541,7 +549,7 @@ export function sendCharacterSpritesToWebview(
 ): void {
   webview.postMessage({
     type: 'characterSpritesLoaded',
-    characters: charSprites.characters,
+    ...charSprites,
   });
   console.log(`📤 Sent ${charSprites.characters.length} character sprites to webview`);
 }

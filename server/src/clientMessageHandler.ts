@@ -621,7 +621,7 @@ function handleWebviewReady(send: WsSend, ctx: ClientMessageContext): void {
   send(characterProfilesLoadedMessage());
   send(recentCharactersMessage());
   if (cache) {
-    send({ type: 'characterSpritesLoaded', characters: cache.characters.characters });
+    send({ type: 'characterSpritesLoaded', ...cache.characters });
     if (cache.pets) {
       send({
         type: 'petSpritesLoaded',

@@ -321,12 +321,18 @@ export interface RecentCharactersLoaded {
 export interface CharacterSpritesLoaded {
   type: 'characterSpritesLoaded';
   characters: CharacterSpriteSet[];
+  presets?: PresetCharacterSprites[];
 }
 
 export interface CharacterSpriteSet {
   down: string[][][];
   up: string[][][];
   right: string[][][];
+}
+
+export interface PresetCharacterSprites {
+  profileId: string;
+  sprites: CharacterSpriteSet;
 }
 
 export interface PetSpritesLoaded {

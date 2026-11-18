@@ -13,6 +13,8 @@ import {
   CARPET_GRID_COLS,
   CARPET_MARCHING_SQUARES_COUNT,
   CARPET_TILE_SIZE,
+  CHAR_FRAME_H,
+  CHARACTER_DIRECTIONS,
   FLOOR_TILE_SIZE,
   PET_FRAME_H,
   PET_FRAME_W_LARGE,
@@ -27,6 +29,7 @@ import {
   WALL_PIECE_HEIGHT,
   WALL_PIECE_WIDTH,
 } from './constants.js';
+import { LEGACY_SHEET_W } from './seatedFrame.js';
 import type { CharacterDirectionSprites, PetSpriteFrames } from './types.js';
 
 // ── Sprite decoding ──────────────────────────────────────────
@@ -158,12 +161,13 @@ export function parseCarpetPng(pngBuffer: Buffer): string[][][] {
 }
 
 /**
- * Decode a single character PNG (128×96) into direction-keyed frame arrays.
- * Each PNG has 3 direction rows (down, up, right) × 8 frames (16×32 each). A sheet made
- * before the seated frame (112×96, 7 frames) gets it derived from its typing frames.
+ * Decode character sheets without resampling. A native isometric sheet may include
+ * five extra walk and wave poses. Original 112×96 sheets gain a seated frame.
  */
 export function decodeCharacterPng(pngBuffer: Buffer): CharacterDirectionSprites {
   const png = PNG.sync.read(sanitizePngBuffer(pngBuffer));
+  if (png.width === LEGACY_SHEET_W && png.height !== CHAR_FRAME_H * CHARACTER_DIRECTIONS.length)
+    throw new Error(`Unsupported legacy character sheet height: ${png.height}`);
   const { width, data } = currentSheetPixels(png.width, png.data);
   return sheetToDirectionSprites(data, width);
 }

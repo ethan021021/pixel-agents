@@ -15,6 +15,9 @@ export const FLOOR_TILE_SIZE = 16;
 export const CHARACTER_DIRECTIONS = ['down', 'up', 'right'] as const;
 export const CHAR_FRAME_W = 16;
 export const CHAR_FRAME_H = 32;
+/** Native isometric artwork has a wider canvas and two source pixels per office pixel. */
+export const ROOM_SHEET_FRAME = { width: 64, height: 96, scale: 2, hipY: 72 } as const;
+export const ROOM_ANIMATED_FRAME_COUNT = 13;
 /** Frames per direction row: walk1-3, type1-2, read1-2, seated (assets/seatedFrame.ts). */
 export const CHAR_FRAMES_PER_ROW = 8;
 /** Frames on a character sheet (8 per direction row) and pixels per frame. */

@@ -4,10 +4,10 @@
  * looks they move agents to, the roster's recency, and the external char_N.png sprites.
  */
 
-import type { CharacterDirectionSprites } from '../../../core/src/assets/types.js';
 import { parseCharacterProfiles } from '../../../core/src/characterProfiles.js';
 import type {
   CharacterProfilesLoaded,
+  CharacterSpritesLoaded,
   RecentCharactersLoaded,
 } from '../../../core/src/messages.js';
 import { parseWardrobeItems } from '../../../core/src/wardrobeItems.js';
@@ -39,8 +39,8 @@ export function handleCastMessage(msg: { type?: unknown }, office: CastOffice): 
     return true;
   }
   if (msg.type === 'characterSpritesLoaded') {
-    // External asset directories' char_N.png, worn after the character profiles
-    setExternalCharacterSprites((msg as { characters: CharacterDirectionSprites[] }).characters);
+    const loaded = msg as CharacterSpritesLoaded;
+    setExternalCharacterSprites(loaded.characters, loaded.presets);
     return true;
   }
   return false;

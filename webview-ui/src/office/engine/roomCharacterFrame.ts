@@ -1,10 +1,15 @@
-import { CHAR_FRAME_H, CHAR_FRAME_W } from '../../../../core/src/assets/constants.js';
+import { isRoomSheetFrame } from '../../../../core/src/assets/characterSheet.js';
+import {
+  CHAR_FRAME_H,
+  CHAR_FRAME_W,
+  ROOM_SHEET_FRAME,
+} from '../../../../core/src/assets/constants.js';
 import {
   CHARACTER_SITTING_OFFSET_PX,
   CHARACTER_Z_SORT_OFFSET,
   VISITOR_WAVE_BEAT_SEC,
 } from '../../constants.js';
-import type { RoomProjection } from '../roomProjection.js';
+import { ROOM_GROUND_SCALE, type RoomProjection } from '../roomProjection.js';
 import { getCharacterRoomSource, getCharacterSprites } from '../sprites/spriteData.js';
 import type { Character } from '../types.js';
 import { CharacterState, Direction, TILE_SIZE } from '../types.js';
@@ -24,6 +29,9 @@ const stride = [-1, 0, 1, 0] as const;
 // Imported sheets carry no pelvis metadata. Their standard frame center and
 // waist row line up with the room's modeled seat without changing any pixels.
 const externalSeatHip = { x: CHAR_FRAME_W / 2, y: CHAR_FRAME_H - 8 };
+const nativeSeatHip = { x: ROOM_SHEET_FRAME.width / 2, y: ROOM_SHEET_FRAME.hipY };
+// One native cell spans one diamond of the room floor, including its transparent margins.
+const nativeRoomScale = ROOM_SHEET_FRAME.width / (2 * TILE_SIZE * ROOM_GROUND_SCALE);
 
 function roomCharacterPixels(character: Character) {
   const sitting = character.state === CharacterState.TYPE && character.seatId !== null;
@@ -51,6 +59,9 @@ function roomCharacterPixels(character: Character) {
   const sprites = getCharacterSprites(character.palette, character.repeat, pose.blink);
   const source = getCharacterSprite(character, sprites);
   if (roomSource === 'external') {
+    if (isRoomSheetFrame(source[0]?.length, source.length)) {
+      return { pixels: source, nativeScale: nativeRoomScale, hip: nativeSeatHip };
+    }
     const standardFrame = source.length === CHAR_FRAME_H && source[0]?.length === CHAR_FRAME_W;
     return { pixels: source, nativeScale: 1, hip: standardFrame ? externalSeatHip : undefined };
   }
