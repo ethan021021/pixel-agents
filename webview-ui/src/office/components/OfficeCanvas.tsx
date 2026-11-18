@@ -25,7 +25,7 @@ import { selectionButtonAt as buttonAt } from '../engine/selectionButtons.js';
 import { furnitureCovers } from '../engine/visitorNavigation.js';
 import { getCatalogEntry } from '../layout/furnitureCatalog.js';
 import { isWalkable } from '../layout/tileMap.js';
-import { type RoomProjection, roomProjection } from '../roomProjection.js';
+import { roomEntryPan, type RoomProjection, roomProjection } from '../roomProjection.js';
 import { EditTool, type FurnitureInstance, TILE_SIZE } from '../types.js';
 import { computeNormalModeCursor } from './officeCanvasCursor.js';
 import { roomActorAt, roomSeatAt } from './roomHitTesting.js';
@@ -52,6 +52,7 @@ interface OfficeCanvasProps {
   officeState: OfficeState;
   onClick: (agentId: number) => void;
   visiting: boolean;
+  angled: boolean;
   onVisitorTap?: () => void;
   canFocusDesk: (agentId: number) => boolean;
   isEditMode: boolean;
@@ -83,6 +84,7 @@ export function OfficeCanvas({
   officeState,
   onClick,
   visiting,
+  angled,
   onVisitorTap,
   canFocusDesk,
   isEditMode,
@@ -105,6 +107,7 @@ export function OfficeCanvas({
   const containerRef = useRef<HTMLDivElement>(null);
   const offsetRef = useRef({ x: 0, y: 0 });
   const roomRef = useRef<RoomProjection | null>(null);
+  const framedLayout = useRef<ReturnType<OfficeState['getLayout']> | null>(null);
   // The terminal may close or the phone shell may change while we walk to it.
   const deskAction = useRef({ canFocusDesk, onClick });
   deskAction.current = { canFocusDesk, onClick };
@@ -177,6 +180,17 @@ export function OfficeCanvas({
         const w = canvas.width;
         const h = canvas.height;
         const layout = officeState.getLayout();
+        if (
+          angled &&
+          !visiting &&
+          framedLayout.current !== layout &&
+          officeState.cameraFollowId === null
+        ) {
+          panRef.current = roomEntryPan(layout, zoom, w, h);
+          framedLayout.current = layout;
+        } else if (!angled) {
+          framedLayout.current = null;
+        }
 
         const editorRender: EditorRenderState | undefined = isEditMode
           ? buildEditorRenderState(editorState, officeState.getLayout())
@@ -194,7 +208,7 @@ export function OfficeCanvas({
         if (cameraFocus) {
           const mapW = layout.cols * TILE_SIZE * zoom;
           const mapH = layout.rows * TILE_SIZE * zoom;
-          const target = visiting
+          const target = angled
             ? roomProjection(w, h, layout.cols, layout.rows, zoom, 0, 0).focusPan(
                 cameraFocus.x,
                 cameraFocus.y,
@@ -216,7 +230,7 @@ export function OfficeCanvas({
           }
         }
 
-        if (visiting) {
+        if (angled) {
           const room = roomProjection(
             w,
             h,
@@ -290,6 +304,7 @@ export function OfficeCanvas({
     officeState,
     resizeCanvas,
     visiting,
+    angled,
     isEditMode,
     editorState,
     _editorTick,
@@ -313,25 +328,46 @@ export function OfficeCanvas({
       const deviceX = cssX * dpr;
       const deviceY = cssY * dpr;
       // Convert to world (sprite pixel) coords
-      const room = visiting ? roomRef.current : null;
+      const room = angled ? roomRef.current : null;
       const { x: worldX, y: worldY } = room?.toWorld(deviceX, deviceY) ?? {
         x: (deviceX - offsetRef.current.x) / zoom,
         y: (deviceY - offsetRef.current.y) / zoom,
       };
       return { worldX, worldY, screenX: cssX, screenY: cssY, deviceX, deviceY };
     },
-    [visiting, zoom],
+    [angled, zoom],
   );
 
   const actorAt = useCallback(
     (pos: { worldX: number; worldY: number; deviceX: number; deviceY: number }) => {
-      const room = visiting ? roomRef.current : null;
+      const room = angled ? roomRef.current : null;
       if (room) return roomActorAt(officeState, room, zoom, pos.deviceX, pos.deviceY);
       const agentId = officeState.getCharacterAt(pos.worldX, pos.worldY);
       const petId = agentId === null ? officeState.getPetAt(pos.worldX, pos.worldY) : null;
       return { agentId, petId, furniture: null, surfaceHeight: 0 };
     },
-    [officeState, visiting, zoom],
+    [officeState, angled, zoom],
+  );
+
+  const assignmentTile = useCallback(
+    (
+      pos: { deviceX: number; deviceY: number },
+      furniture: FurnitureInstance | null,
+      tile: { col: number; row: number } | null,
+    ) => {
+      if (!angled || !furniture || !roomRef.current) return tile;
+      const seat = roomSeatAt(
+        officeState,
+        furniture,
+        roomRef.current,
+        pos.deviceX,
+        pos.deviceY,
+        zoom,
+        true,
+      );
+      return seat ? { col: seat.seatCol, row: seat.seatRow } : null;
+    },
+    [angled, officeState, zoom],
   );
 
   const visitorTargetAt = useCallback(
@@ -536,7 +572,11 @@ export function OfficeCanvas({
         visiting && hitId === null && petId === null
           ? visitorTargetAt(pos, tile, furniture, surfaceHeight)
           : null;
-      officeState.hoveredTile = visiting ? (visitTarget?.kind === 'floor' ? tile : null) : tile;
+      const seatTile =
+        !visiting && officeState.selectedAgentId !== null
+          ? assignmentTile(pos, furniture, tile)
+          : tile;
+      officeState.hoveredTile = visiting ? (visitTarget?.kind === 'floor' ? tile : null) : seatTile;
       const canvas = canvasRef.current;
       if (canvas) {
         if (visiting) {
@@ -547,7 +587,7 @@ export function OfficeCanvas({
             hitId,
             petId,
             selectedAgentId: officeState.selectedAgentId,
-            tile,
+            tile: seatTile,
             getSeatAtTile: (col, row) => officeState.getSeatAtTile(col, row),
             getSeat: (seatId) => officeState.seats.get(seatId),
             getCharacter: (id) => officeState.characters.get(id),
@@ -570,6 +610,7 @@ export function OfficeCanvas({
       visiting,
       actorAt,
       visitorTargetAt,
+      assignmentTile,
     ],
   );
 
@@ -827,7 +868,7 @@ export function OfficeCanvas({
         const selectedCh = officeState.characters.get(officeState.selectedAgentId);
         // Skip seat reassignment for sub-agents
         if (selectedCh && !selectedCh.isSubagent) {
-          const tile = screenToTile(clientX, clientY);
+          const tile = assignmentTile(pos, furniture, screenToTile(clientX, clientY));
           if (tile) {
             const seatId = officeState.getSeatAtTile(tile.col, tile.row);
             if (seatId) {
@@ -862,6 +903,7 @@ export function OfficeCanvas({
     [
       actorAt,
       deskCanOpen,
+      assignmentTile,
       officeState,
       onClick,
       onVisitorTap,

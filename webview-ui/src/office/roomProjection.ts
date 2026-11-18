@@ -1,7 +1,10 @@
+import { ROOM_SHEET_FRAME } from '../../../core/src/assets/constants.js';
 import type { FurnitureInstance, OfficeLayout } from './types.js';
 import { TILE_SIZE, TileType } from './types.js';
 
 export const ROOM_GROUND_SCALE = 0.75;
+/** Source pixels per room display unit: a tile is 64 native pixels across its diamond. */
+export const ROOM_NATIVE_SCALE = ROOM_SHEET_FRAME.width / (2 * TILE_SIZE * ROOM_GROUND_SCALE);
 export const ROOM_WALL_HEIGHT = 42;
 export const ROOM_PLATFORM_DEPTH = 2;
 
@@ -58,7 +61,7 @@ export function roomEntryPan(
   zoom: number,
   width: number,
   height: number,
-  visitor: RoomPoint,
+  visitor?: RoomPoint,
 ): RoomPoint {
   const { cols, rows, tiles } = layout;
   const projection = roomProjection(0, 0, cols, rows, zoom, 0, 0);
@@ -76,9 +79,10 @@ export function roomEntryPan(
     top = Math.min(top, point.y - (tile === TileType.WALL ? ROOM_WALL_HEIGHT * zoom : 0));
     bottom = Math.max(bottom, point.y + halfWidth + ROOM_PLATFORM_DEPTH * zoom);
   }
-  if (!Number.isFinite(top) || right - left > width || bottom - top > height) {
+  if (!Number.isFinite(top))
+    return visitor ? projection.focusPan(visitor.x, visitor.y) : { x: 0, y: 0 };
+  if (visitor && (right - left > width || bottom - top > height))
     return projection.focusPan(visitor.x, visitor.y);
-  }
   return { x: -(left + right) / 2, y: -(top + bottom) / 2 };
 }
 

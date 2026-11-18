@@ -284,9 +284,11 @@ function App() {
   const containerRef = useRef<HTMLDivElement>(null);
   const canVisit =
     isBrowserRuntime && !officeReadOnly && !editor.isEditMode && !isDebugMode && !intro;
+  const angledRoom =
+    isBrowserRuntime && !editor.isEditMode && !isDebugMode && !intro && (visiting || !showAreas);
   const getCardAppearance = (id: number) => {
     const appearance = terminalDrawer.getAppearance(id);
-    return canVisit && visiting ? { ...appearance, roomPortrait: true } : appearance;
+    return angledRoom ? { ...appearance, roomPortrait: true } : appearance;
   };
   const leaveOffice = useCallback(() => {
     setVisitorActionsOpen(false);
@@ -394,7 +396,7 @@ function App() {
         editor.zoom,
         editor.panRef.current,
         window.devicePixelRatio || 1,
-        canVisit && visiting,
+        angledRoom,
       );
       return projection.toScreen((col + 0.5) * TILE_SIZE, (row + 0.5) * TILE_SIZE);
     };
@@ -406,8 +408,7 @@ function App() {
     editor.zoom,
     editor.panRef,
     effectiveShowAreas,
-    canVisit,
-    visiting,
+    angledRoom,
   ]);
 
   const waveVisitor = useCallback(() => {
@@ -611,6 +612,7 @@ function App() {
         officeState={officeState}
         onClick={handleClick}
         visiting={canVisit && visiting}
+        angled={angledRoom}
         onVisitorTap={toggleVisitorActions}
         canFocusDesk={canFocusDesk}
         isEditMode={editor.isEditMode}
@@ -751,7 +753,7 @@ function App() {
               containerRef={containerRef}
               zoom={editor.zoom}
               panRef={editor.panRef}
-              angled={canVisit && visiting}
+              angled={angledRoom}
               onCloseAgent={handleCloseAgent}
               alwaysShowOverlay={alwaysShowOverlay}
             />
@@ -877,6 +879,7 @@ function App() {
     // the terminal panel. Mobile: a column — the sliding office/terminal track
     // on top, the agent-card bar pinned along the bottom.
     <div
+      data-hotel-room={angledRoom || undefined}
       className={`w-full h-full relative overflow-hidden flex ${isMobile ? 'flex-col' : ''}`}
       style={
         isMobile && keyboard.clampHeight !== null ? { height: keyboard.clampHeight } : undefined

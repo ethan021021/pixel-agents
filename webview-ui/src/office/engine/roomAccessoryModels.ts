@@ -11,11 +11,11 @@ const ink = {
   caseInterior: ['#372c38', '#211e2a', '#2d2632'],
   brass: ['#f4ce80', '#987247', '#c19a59'],
   bezel: ['#e7d6b2', '#938163', '#b6a487'],
-  shell: ['#f3e3bf', '#9c8969', '#c7b393'],
-  petrol: ['#47777b', '#243e4e', '#365861'],
-  petrolEdge: ['#619690', '#3b6268', '#527c7e'],
-  keys: ['#505a5c', '#303c43', '#404b50'],
-  keycaps: ['#d4ccb0', '#777568', '#a49d86'],
+  shell: ['#f2e8cd', '#a2977c', '#c9bea2'],
+  caseShade: ['#d8ccb2', '#8c826c', '#b1a78f'],
+  caseEdge: ['#fcf3dc', '#b3a78a', '#ded1b4'],
+  keys: ['#817965', '#514c40', '#666052'],
+  keycaps: ['#e6dcbd', '#ab9c82', '#c2b398'],
   cup: ['#eee3c6', '#918a70', '#bcaf92'],
   clay: ['#ba805b', '#783f32', '#9c5740'],
   clayFoot: ['#935c4a', '#644034', '#7c4d3e'],
@@ -29,11 +29,11 @@ const ink = {
   cactus: ['#81a16b', '#385c49', '#527c55'],
   bin: ['#6c8780', '#354a4d', '#4c6563'],
   binRim: ['#9daea0', '#4f6661', '#788f84'],
-  screenOff: solid('#263331'),
-  screenGlass: solid('#435855'),
-  screenOn: solid('#20473d'),
+  screenOff: solid('#34473a'),
+  screenGlass: solid('#576649'),
+  screenOn: solid('#355e38'),
   screenTrim: solid('#21323a'),
-  phosphor: solid('#8dde8e'),
+  phosphor: solid('#b6d978'),
   signal: solid('#d6b46b'),
   soil: solid('#3d3029'),
   rope: solid('#b59a73'),
@@ -75,33 +75,61 @@ function box(
 function computer(input: RoomModelInput): RoomModel {
   const lit = input.type.includes('_ON_');
   const cursor = input.type.endsWith('_2') ? 1.2 : input.type.endsWith('_3') ? 2.4 : 0;
-  const pieces = [
-    box(-5.5, -6, 0, 11, 9, 1.5, ink.keys),
-    box(-5, -6.5, 1.5, 10.5, 8.5, 9.5, ink.petrol),
-    box(-6.5, -1.5, 1.5, 13, 4, 11.5, ink.petrol),
-    box(-5.7, -1.15, 13, 11.4, 4.65, 1, ink.petrolEdge),
-    box(-6.5, 1.1, 1.5, 13, 2.4, 11.5, ink.shell),
-    box(6.5, -0.75, 9.5, 0.25, 1.75, 0.55, ink.keys),
-    box(6.5, -0.75, 8.4, 0.25, 1.75, 0.55, ink.keys),
-    box(-5.35, 3.5, 4.05, 10.7, 0.54, 8.1, ink.bezel),
-    box(-4.8, 4.04, 4.7, 9.6, 0.25, 6.85, ink.screenTrim),
-    box(-4.15, 4.29, 5.3, 8.3, 0.15, 5.65, lit ? ink.screenOn : ink.screenOff),
-    box(-3.55, 4.44, 10.35, 7.1, 0.2, 0.55, ink.screenGlass),
-    box(3.9, 3.55, 2.55, 1.2, 0.45, 0.6, lit ? ink.phosphor : ink.signal),
-    box(-4.4, 3.55, 2.35, 3.8, 0.45, 0.55, ink.keys),
-    ...(lit
-      ? [
-          box(-3.5, 4.44, 8.8, 5.9, 0.25, 0.48, ink.phosphor),
-          box(-3.5, 4.44, 7.45, 4.4, 0.25, 0.48, ink.phosphor),
-          box(-3.5 + cursor, 4.44, 6.3, 1.1, 0.25, 0.56, ink.phosphor),
-        ]
-      : []),
-    box(-6.1, 5.9, 0, 11.35, 4.4, 0.95, ink.petrol),
-    box(-5.55, 6.55, 0.95, 6.7, 1.8, 0.35, ink.keycaps),
-    box(1.95, 6.55, 0.95, 2.55, 2.35, 0.35, ink.keycaps),
-    box(-4.1, 9.18, 0.95, 4.4, 0.55, 0.35, ink.keycaps),
-    box(6.15, 6.5, 0, 2.25, 3.4, 1.15, ink.shell),
+  const panel = [
+    box(-6.2, 1.1, 2.25, 12.4, 1.45, 10.4, ink.caseEdge),
+    box(-5.45, 2.55, 3.25, 10.9, 0.28, 8.5, ink.bezel),
+    box(-4.8, 2.83, 4.25, 9.6, 0.18, 6.8, ink.screenTrim),
+    box(-4.4, 3.01, 4.6, 8.8, 0.14, 6, lit ? ink.screenOn : ink.screenOff),
+    box(-3.9, 3.15, 10, 7.85, 0.15, 0.34, ink.screenGlass),
+    box(-4.2, 2.83, 2.95, 3.05, 0.28, 0.4, ink.keys),
+    box(3.7, 2.83, 2.95, 0.9, 0.28, 0.4, lit ? ink.phosphor : ink.signal),
   ];
+  if (lit) {
+    panel.push(
+      box(-3.6, 3.15, 8.65, 0.5, 0.18, 0.4, ink.phosphor),
+      box(-2.85, 3.15, 8.28, 0.65, 0.18, 0.4, ink.phosphor),
+      box(-3.6, 3.15, 7.9, 0.5, 0.18, 0.4, ink.phosphor),
+      box(-1.45, 3.15, 8.12, 3.5, 0.18, 0.4, ink.phosphor),
+      box(-3.6 + cursor, 3.15, 6.35, 1.15, 0.18, 0.55, ink.phosphor),
+    );
+  }
+  const keyboard = [
+    box(-6.1, 4.05, 0, 10.3, 5.1, 1, ink.bezel),
+    box(-5.75, 4.4, 1, 9.6, 4.4, 0.55, ink.caseShade),
+    box(-5.25, 4.9, 1.55, 8.6, 3.3, 0.18, ink.keys),
+  ];
+  for (let row = 0; row < 3; row++) {
+    for (let key = 0; key < 8; key++) {
+      keyboard.push(
+        box(-5.11 + key * 1.05, 5.05 + row * 0.76, 1.73, 0.82, 0.55, 0.22, ink.keycaps),
+      );
+    }
+  }
+  keyboard.push(
+    box(-4.3, 7.45, 1.73, 4.8, 0.55, 0.22, ink.keycaps),
+    box(0.95, 7.45, 1.73, 2, 0.55, 0.22, ink.keycaps),
+    box(5.15, 5.5, 0, 2.45, 3.1, 0.6, ink.bezel),
+    box(5.5, 5.8, 0.6, 1.75, 2.35, 0.65, ink.shell),
+  );
+  const frontVisible =
+    input.orientation !== 'back' && input.orientation !== 'right' && input.orientation !== 'side';
+  const housing = [
+    box(-5.75, -5.9, 0, 11.5, 8.75, 1.25, ink.keys),
+    box(-6.1, -6.2, 1.25, 12.2, 9, 1, ink.bezel),
+    box(-5.1, -6.1, 2.25, 10.2, 7.2, 8.3, ink.caseShade),
+    box(-5.65, -4.35, 2.25, 11.3, 6.2, 9.9, ink.shell),
+    box(-6.2, -2.5, 2.25, 12.4, 4.1, 10.4, ink.shell),
+    box(-5.8, -2.1, 12.65, 11.6, 3.4, 0.55, ink.caseEdge),
+  ];
+  // The rear casing really hides the glass and keyboard when the monitor turns.
+  const pieces = frontVisible
+    ? [...housing, ...panel, ...keyboard]
+    : [...keyboard, ...panel, ...housing];
+  if (!frontVisible) {
+    for (let slat = 0; slat < 4; slat++) {
+      pieces.push(box(-3.1, -6.28, 6 + slat * 0.75, 6.2, 0.18, 0.32, ink.keys));
+    }
+  }
   const cx = input.width / 2;
   const cy = Math.max(input.backgroundRows * TILE_SIZE, input.depth - TILE_SIZE) + 7.5;
   return {
@@ -128,8 +156,8 @@ function computer(input: RoomModelInput): RoomModel {
 function planter(x: number, y: number, z: number, size: number, glazed = false): RoomBox[] {
   const body = glazed ? ink.jade : ink.clay;
   const rim = glazed ? ink.jadeEdge : ink.clayEdge;
-  const inset = (gap: number, heightFromBase: number, height: number, colors: Faces) =>
-    box(
+  const inset = (gap: number, heightFromBase: number, height: number, colors: Faces): RoomBox => ({
+    ...box(
       x - size / 2 + gap,
       y - size / 2 + gap,
       z + heightFromBase,
@@ -137,7 +165,9 @@ function planter(x: number, y: number, z: number, size: number, glazed = false):
       size - 2 * gap,
       height,
       colors,
-    );
+    ),
+    cornerRadius: (size - 2 * gap) * 0.28,
+  });
   return [
     inset(0.75, 0, 1.1, glazed ? ink.jadeFoot : ink.clayFoot),
     inset(1, 1.1, 1.1, body),
@@ -149,27 +179,31 @@ function planter(x: number, y: number, z: number, size: number, glazed = false):
 }
 
 function foliage(x: number, y: number, z: number, scale: number): RoomBox[] {
-  const leaf = (
-    dx: number,
-    dy: number,
-    dz: number,
-    w: number,
-    d: number,
-    h: number,
-    colors: Faces,
-  ) => box(x + dx * scale, y + dy * scale, z + dz * scale, w * scale, d * scale, h * scale, colors);
-  return [
-    leaf(-0.6, -0.6, 0, 1.2, 1.2, 10, ink.leafDark),
-    leaf(-3.8, -2.25, 5.4, 3.3, 2.4, 3.4, ink.leafDark),
-    leaf(-5.6, -2.45, 6.9, 3.8, 2, 2.1, ink.leaf),
-    leaf(0.7, -2, 8.8, 2.75, 2.5, 4.3, ink.leafDark),
-    leaf(2.3, -2.4, 11, 3.6, 2.3, 2.6, ink.leafLight),
-    leaf(-1.5, -0.9, 10.1, 2.6, 2.5, 4.4, ink.leafDark),
-    leaf(-1.1, -0.95, 13, 2.15, 2.2, 2.25, ink.leafLight),
-    leaf(-0.8, 0.7, 5.1, 3, 2.55, 3.25, ink.leaf),
-    leaf(1.35, 1.45, 6.2, 3.8, 2.2, 2.5, ink.leafLight),
-    leaf(-3.85, 1.15, 3.7, 3.9, 2.6, 2.15, ink.leafDark),
-  ];
+  const leaves: RoomBox[] = [];
+  // A leaf bends out from the stem. Its overlapping facets widen in the middle
+  // and taper at the tip so the silhouette remains readable at room zoom.
+  const blade = (reachX: number, reachY: number, rise: number, droop: number, colors: Faces) => {
+    for (let step = 0; step < 8; step++) {
+      const t = step / 7;
+      const spread = scale * (0.55 + 2.5 * Math.sin(Math.PI * t));
+      const thickness = scale * (0.6 + 1.1 * (1 - t));
+      const px = x + reachX * t * scale;
+      const py = y + reachY * t * scale;
+      const pz = z + (rise * t + droop * Math.sin(Math.PI * t)) * scale;
+      leaves.push({
+        ...box(px - spread / 2, py - spread / 2, pz, spread, spread, thickness, colors),
+        cornerRadius: spread / 3,
+      });
+    }
+  };
+  blade(-3.8, -5.2, 5.1, 3.3, ink.leafDark);
+  blade(3.0, -4.8, 9.6, 2.6, ink.leaf);
+  blade(-4.5, -1.4, 10.9, 2.2, ink.leafLight);
+  blade(0.6, -1.8, 14.4, 0.9, ink.leaf);
+  blade(5.9, 0.8, 6.5, 4.3, ink.leafLight);
+  blade(-3.2, 4.8, 5.3, 3.7, ink.leaf);
+  blade(2.1, 4.0, 3.9, 3.4, ink.leafDark);
+  return leaves;
 }
 
 function floorPlant(input: RoomModelInput): RoomModel {
@@ -302,13 +336,37 @@ function frame(input: RoomModelInput): RoomModel {
   } else {
     const artWidth = width - 5;
     const artX = x + 2.5;
+    const artHeight = height - 5;
+    boxes.push(box(artX, 2.55, z + 2.5, artWidth, 0.18, artHeight, variant ? ink.rust : ink.sky));
     boxes.push(
-      box(artX, 2.55, z + 2.5, artWidth, 0.2, height - 5, variant ? ink.rust : ink.sky),
-      box(artX + artWidth * 0.64, 2.75, z + height - 5.3, 1.8, 0.2, 1.8, ink.sun),
-      box(artX, 2.75, z + 2.5, artWidth * 0.66, 0.2, 3.1, ink.hill),
-      box(artX + artWidth * 0.22, 2.75, z + 5.6, artWidth * 0.24, 0.2, 1.55, ink.hill),
-      box(artX + artWidth * 0.55, 2.75, z + 2.5, artWidth * 0.45, 0.2, 2.1, ink.grass),
+      box(
+        artX + artWidth * 0.19,
+        2.74,
+        z + 2.5 + artHeight * 0.62,
+        artWidth * 0.12,
+        0.18,
+        artHeight * 0.2,
+        ink.sun,
+      ),
     );
+    // Stepped poster profiles on the wall plane. All the columns share a baseline.
+    const peaks = [2, 3, 4, 6, 7, 5, 4, 3, 5, 6, 4, 3];
+    peaks.forEach((peak, index) => {
+      const left = artX + (index * artWidth) / peaks.length;
+      const width = artWidth / peaks.length;
+      boxes.push(box(left, 2.93, z + 2.5, width, 0.15, (artHeight * peak) / 11, ink.hill));
+      boxes.push(
+        box(
+          left,
+          3.09,
+          z + 2.5,
+          width,
+          0.15,
+          (artHeight * (2 + (index % 7 < 3 ? 1 : 0))) / 11,
+          ink.grass,
+        ),
+      );
+    });
   }
   return wallModel(input, boxes);
 }
@@ -321,8 +379,19 @@ function clock(input: RoomModelInput): RoomModel {
     box(x + 1.35, 2.15, 20.35, 8.3, 0.65, 8.3, ink.paper),
     box(x + 5.17, 2.8, 24, 0.72, 0.24, 3.8, ink.hand),
     box(x + 5.17, 3.05, 24, 2.63, 0.23, 0.72, ink.hand),
-    box(x + 3, 2.8, 22.05, 0.65, 0.24, 0.65, ink.rust),
-    box(x + 8.1, 2.8, 26.8, 0.65, 0.24, 0.65, ink.rust),
+    ...Array.from({ length: 12 }, (_, hour) => {
+      const angle = (hour * Math.PI) / 6;
+      return box(
+        x + 5.32 + 3.43 * Math.sin(angle),
+        2.82,
+        24.4 + 3.38 * Math.cos(angle),
+        0.43,
+        0.15,
+        hour % 3 === 0 ? 0.66 : 0.37,
+        ink.hand,
+      );
+    }),
+    box(x + 4.96, 3.29, 23.8, 1, 0.18, 0.95, ink.brass),
   ]);
 }
 
@@ -332,12 +401,12 @@ function coffee(input: RoomModelInput): RoomModel {
   const z = input.surfaceHeight;
   return {
     boxes: [
-      box(x - 4, y - 3.6, z, 8, 7.2, 0.9, ink.cup),
-      box(x - 2.5, y - 2.35, z + 0.9, 5, 4.7, 3.55, ink.cup),
+      { ...box(x - 4, y - 3.6, z, 8, 7.2, 0.9, ink.cup), cornerRadius: 2.3 },
+      { ...box(x - 2.5, y - 2.35, z + 0.9, 5, 4.7, 3.55, ink.cup), cornerRadius: 1.35 },
       box(x + 2.5, y - 0.9, z + 1.55, 1.9, 1.65, 0.65, ink.cup),
       box(x + 3.7, y - 0.9, z + 2.2, 0.7, 1.65, 1.35, ink.cup),
       box(x + 2.5, y - 0.9, z + 3.55, 1.9, 1.65, 0.65, ink.cup),
-      box(x - 1.65, y - 1.6, z + 4.46, 3.3, 3.2, 0.18, ink.coffee),
+      { ...box(x - 1.9, y - 1.85, z + 4.46, 3.8, 3.7, 0.18, ink.coffee), cornerRadius: 1 },
       box(x - 1.35, y - 1.35, z + 4.65, 2, 0.65, 0.15, ink.foam),
     ],
   };

@@ -36,7 +36,7 @@ export function roomActorAt(
     const front = chair?.model?.sprite.seating?.foreground;
     if (chair && front) {
       const bounds = roomFurnitureSpriteBounds(chair, projection, zoom, front);
-      if (pickPixel(front.pixels, bounds, zoom, x, y)) continue;
+      if (pickPixel(front.pixels, bounds, bounds.pixelZoom, x, y)) continue;
     }
     depth = frame.depth;
     agentId = ch.id;
@@ -71,8 +71,7 @@ function pickPixel(
   y: number,
   mirror = false,
 ): boolean {
-  // At odd zooms the 2× character is resampled onto the device grid. Pick
-  // the texel under the center of the painted pixel, as nearest-neighbor does.
+  // At fractional scale, sample the center of the painted device pixel.
   const col = Math.floor((Math.floor(x) + 0.5 - origin.x) / zoom);
   const row = Math.floor((Math.floor(y) + 0.5 - origin.y) / zoom);
   return !!pixels[row]?.[mirror ? pixels[0].length - 1 - col : col];
@@ -90,7 +89,7 @@ function roomFurnitureAt(
   for (const art of roomFurnitureArt(office.furniture, office.getLayout())) {
     const bounds = roomFurnitureSpriteBounds(art, projection, zoom);
     if (hit && bounds.depth < hit.depth) continue;
-    if (!pickPixel(art.pixels, bounds, zoom, x, y, art.mirror)) continue;
+    if (!pickPixel(art.pixels, bounds, bounds.pixelZoom, x, y, art.mirror)) continue;
     hit = { furniture: art.furniture, depth: bounds.depth, surfaceHeight: art.surfaceHeight ?? 0 };
   }
   return hit;
@@ -103,6 +102,7 @@ export function roomSeatAt(
   x: number,
   y: number,
   zoom = 1,
+  includeAssigned = false,
 ): Seat | null {
   const item = office.getLayout().furniture.find(({ uid }) => uid === furniture.uid);
   const entry = item && getCatalogEntry(item.type);
@@ -110,7 +110,11 @@ export function roomSeatAt(
   let closest: Seat | null = null;
   let distance = Infinity;
   for (const seat of office.seats.values()) {
-    if (seat.assigned || (seat.uid !== item.uid && !seat.uid.startsWith(`${item.uid}:`))) continue;
+    if (
+      (!includeAssigned && seat.assigned) ||
+      (seat.uid !== item.uid && !seat.uid.startsWith(`${item.uid}:`))
+    )
+      continue;
     if (
       seat.seatCol < item.col ||
       seat.seatCol >= item.col + entry.footprintW ||

@@ -5,53 +5,59 @@ type Faces = RoomBox['colors'];
 
 /* eslint-disable pixel-agents/no-inline-colors -- Authored room furniture palette. */
 const WOOD = {
-  frame: ['#9f6646', '#55312b', '#754332'],
-  apron: ['#ad724e', '#724030', '#915438'],
-  edge: ['#e3ac72', '#9d5738', '#b46e49'],
-  surface: ['#ca8c58', '#83482e', '#a56844'],
-  grain: ['#d99e6b', '#b87852', '#c48658'],
-  seam: ['#b4784d', '#86472f', '#a65d39'],
-  foot: ['#674737', '#3e2828', '#57352c'],
-  drawer: ['#b57551', '#794331', '#9c5940'],
-  pull: ['#ecd18b', '#ab7949', '#c6a164'],
+  frame: ['#b78952', '#684328', '#97693b'],
+  apron: ['#cf9a58', '#815328', '#a8743d'],
+  edge: ['#f5cc80', '#a7763d', '#d2a05b'],
+  surface: ['#e0b26e', '#986e3f', '#bb8b53'],
+  grain: ['#efd298', '#ae8755', '#c9a36a'],
+  seam: ['#be965e', '#85643d', '#ab8150'],
+  foot: ['#735535', '#3a2e22', '#58422d'],
+  drawer: ['#d0a168', '#866038', '#b78a52'],
+  pull: ['#f9dc77', '#765724', '#b99448'],
 } as const;
 
 const BLOTTER = {
-  edge: ['#375c5b', '#263f45', '#304f54'],
-  leather: ['#72968a', '#476d67', '#598476'],
+  edge: ['#39534f', '#273a3a', '#324b49'],
+  leather: ['#718d74', '#495b50', '#5f7863'],
 } as const;
 
 const SOFA = {
-  plinth: ['#5d3541', '#341f31', '#452637'],
-  base: ['#943c56', '#54263d', '#742c47'],
-  cloth: ['#ad4961', '#743047', '#90374e'],
-  seat: ['#bb526b', '#7e304a', '#a13f57'],
-  crown: ['#cd667d', '#963c53', '#b54f67'],
-  welt: ['#db8291', '#a7475b', '#c36b7e'],
+  base: ['#547a34', '#30552a', '#436a31'],
+  cloth: ['#81b746', '#3d742f', '#599338'],
+  seat: ['#94c655', '#548632', '#72aa41'],
+  crown: ['#a9d56a', '#64943b', '#8bbb4d'],
+  welt: ['#c2e489', '#719b42', '#9bc661'],
+  button: ['#74a640', '#416c32', '#537c36'],
 } as const;
 
-const WINE = {
-  plinth: ['#594050', '#302330', '#4c3144'],
-  base: ['#874968', '#4f2d4a', '#663756'],
-  cloth: ['#9f5575', '#61405e', '#7e4264'],
-  seat: ['#ac6080', '#713f61', '#924e6e'],
-  crown: ['#bf7491', '#8e4e70', '#a85d80'],
-  welt: ['#cc8ba4', '#a36181', '#bb7595'],
+const STEEL = {
+  rim: ['#c2cfca', '#677877', '#889896'],
+  side: ['#818f91', '#465254', '#59676a'],
+  dark: ['#4c5a59', '#2b3637', '#354441'],
+} as const;
+
+const UPHOLSTERY = {
+  base: ['#688789', '#405759', '#506d6d'],
+  cloth: ['#82a5a6', '#516c70', '#688a8d'],
+  seat: ['#93b6b6', '#657f84', '#789ca0'],
+  crown: ['#a7c7c4', '#759398', '#8cabae'],
+  welt: ['#c1d7cd', '#819b9b', '#a7c0bc'],
+  button: ['#789a9b', '#4f696d', '#607e80'],
 } as const;
 
 const COFFEE_TABLE = {
-  foot: ['#70796f', '#2c3739', '#444f4b'],
-  stem: ['#7b8479', '#364345', '#53615a'],
-  collar: ['#bda170', '#7d6143', '#9a7b50'],
-  rim: ['#dfcb9f', '#746c5c', '#a5926d'],
-  glass: ['#639a9b', '#3f6f76', '#537e81'],
-  gleam: ['#a5c6b9', '#659499', '#7fa9a6'],
+  foot: ['#8e9b98', '#424d4d', '#647270'],
+  stem: ['#b3bfba', '#576564', '#81918c'],
+  collar: ['#d5bd78', '#856b3b', '#b29b5e'],
+  rim: ['#e0d2b4', '#6a6759', '#989585'],
+  glass: ['#77999a', '#496768', '#628284'],
+  gleam: ['#afc4b9', '#6f908b', '#8fada4'],
 } as const;
 
 const BENCH = {
-  seat: ['#b49768', '#796049', '#9b7750'],
-  crown: ['#d1b77e', '#9d8358', '#b99b67'],
-  welt: ['#dfc690', '#af9160', '#c8a977'],
+  seat: ['#af7450', '#754b36', '#936044'],
+  crown: ['#cd926d', '#986247', '#b57b59'],
+  welt: ['#e4b887', '#a77553', '#c79669'],
 } as const;
 /* eslint-enable pixel-agents/no-inline-colors */
 
@@ -63,9 +69,10 @@ type Piece = (
   depth: number,
   height: number,
   colors: Faces,
+  cornerRadius?: number,
 ) => RoomBox;
 
-const box: Piece = (x, y, z, width, depth, height, colors) => ({
+const box: Piece = (x, y, z, width, depth, height, colors, cornerRadius) => ({
   x,
   y,
   z,
@@ -73,6 +80,7 @@ const box: Piece = (x, y, z, width, depth, height, colors) => ({
   depth,
   height,
   colors,
+  cornerRadius,
 });
 
 const corners = (width: number, depth: number, inset: number, size: number) => {
@@ -100,53 +108,61 @@ function table(input: RoomModelInput, kind: 'desk' | 'meeting' | 'console'): Roo
   const place: Piece = (dx, dy, ...rest) => box(x + dx, y + dy, ...rest);
   const alongX = width >= depth;
   const run = alongX ? width : depth;
-  const pier = (offset: number, z: number, length: number, height: number, colors: Faces) =>
+  const onTop: Piece = (u, v, z, w, d, height, colors, cornerRadius) =>
     alongX
-      ? place(offset, 2, z, length, depth - 4, height, colors)
-      : place(2, offset, z, width - 4, length, height, colors);
-  const leg = kind === 'meeting' ? 3.5 : 2.8;
-  const boxes =
-    kind !== 'desk'
-      ? corners(width, depth, kind === 'meeting' ? 1.5 : 2, leg).flatMap(([lx, ly]) => [
-          place(lx, ly, 0, leg, leg, 1.25, WOOD.foot),
-          place(lx + 0.4, ly + 0.4, 1.25, leg - 0.8, leg - 0.8, apronTop - 1.25, WOOD.frame),
-        ])
-      : [2, run - 6.5].flatMap((offset) => [
-          pier(offset, 0, 4.5, 1.5, WOOD.foot),
-          pier(offset + 0.4, 1.5, 3.7, apronTop - 1.5, WOOD.frame),
-        ]);
+      ? place(u, v, z, w, d, height, colors, cornerRadius)
+      : place(v, u, z, d, w, height, colors, cornerRadius);
+  const span = alongX ? depth : width;
+  const leg = kind === 'meeting' ? 3 : 2.15;
+  const boxes = corners(width, depth, 1.65, leg).flatMap(([lx, ly]) => [
+    place(lx + 0.25, ly + 0.25, 0, leg - 0.5, leg - 0.5, 0.9, WOOD.foot, 0.25),
+    place(lx + 0.4, ly + 0.4, 0.9, leg - 0.8, leg - 0.8, 2.4, WOOD.frame, 0.3),
+    place(lx + 0.15, ly + 0.15, 3.3, leg - 0.3, leg - 0.3, 0.75, WOOD.edge, 0.3),
+    place(lx, ly, 4.05, leg, leg, apronTop - 4.05, WOOD.apron, 0.3),
+  ]);
 
-  const apronHeight = 2.75;
-  const apronZ = apronTop - apronHeight;
+  const apronZ = apronTop - 2.25;
   boxes.push(
-    place(1.5, 1.5, apronZ, width - 3, 1.5, apronHeight, WOOD.apron),
-    place(1.5, 3, apronZ, 1.5, depth - 6, apronHeight, WOOD.apron),
-    place(width - 3, 3, apronZ, 1.5, depth - 6, apronHeight, WOOD.apron),
-    place(1.5, depth - 3, apronZ, width - 3, 1.5, apronHeight, WOOD.apron),
-    place(0, 0, apronTop, width, depth, 2, WOOD.edge),
-    place(1, 1, surfaceHeight - 0.25, width - 2, depth - 2, 0.25, WOOD.surface),
+    place(1.5, 1.5, apronZ, width - 3, depth - 3, 2.25, WOOD.apron),
+    place(0.45, 0.45, apronTop - 0.35, width - 0.9, depth - 0.9, 0.7, WOOD.frame, 0.6),
+    place(0, 0, apronTop + 0.35, width, depth, 1.65, WOOD.edge, 0.6),
+    place(0.8, 0.8, surfaceHeight - 0.3, width - 1.6, depth - 1.6, 0.3, WOOD.surface, 0.5),
+  );
+  // Thin, irregular runs follow the long boards. The top remains flush for props.
+  const grainZ = surfaceHeight - 0.15;
+  for (const fraction of [0.31, 0.63]) {
+    boxes.push(onTop(1.5, span * fraction, grainZ, run - 3, 0.62, 0.15, WOOD.seam));
+  }
+  boxes.push(
+    onTop(3, span * 0.21, grainZ, run * 0.25, 0.42, 0.15, WOOD.grain),
+    onTop(run * 0.53, span * 0.82, grainZ, run * 0.29, 0.35, 0.15, WOOD.grain),
   );
 
-  // Place the seams flush with the top so computers and cups share one elevation.
-  const grain = (offset: number, length: number, colors: Faces) =>
-    alongX
-      ? place(2, offset, surfaceHeight - 0.2, width - 4, length, 0.2, colors)
-      : place(offset, 2, surfaceHeight - 0.2, length, depth - 4, 0.2, colors);
-  const span = alongX ? depth : width;
-  boxes.push(grain(span * 0.34, 0.65, WOOD.grain), grain(span * 0.7, 0.5, WOOD.seam));
-  if (kind === 'meeting') boxes.push(grain(span * 0.52, 0.65, WOOD.grain));
-
   if (kind === 'desk') {
-    const onDesk: Piece = (u, v, z, w, d, height, colors) =>
-      alongX ? place(u, v, z, w, d, height, colors) : place(v, u, z, d, w, height, colors);
-    const pad = (run - 3) * 0.45;
+    const pad = run * 0.43;
     const u = (run - pad) / 2;
+    const drawerWidth = Math.min(11.5, run * 0.28);
+    const end = run - drawerWidth - 1.5;
     boxes.push(
-      onDesk(u, 2.25, surfaceHeight - 0.25, pad, span - 4.5, 0.25, BLOTTER.edge),
-      onDesk(u + 0.75, 3, surfaceHeight - 0.15, pad - 1.5, span - 6, 0.15, BLOTTER.leather),
-      onDesk(run - 13, span - 2.5, apronZ, 8, 1.6, 2.4, WOOD.drawer),
-      onDesk(run - 10.5, span - 0.9, apronZ + 1, 3, 0.5, 0.65, WOOD.pull),
+      onTop(u, 1.8, surfaceHeight - 0.24, pad, span - 3.6, 0.24, BLOTTER.edge, 0.55),
+      onTop(
+        u + 0.55,
+        2.35,
+        surfaceHeight - 0.15,
+        pad - 1.1,
+        span - 4.7,
+        0.15,
+        BLOTTER.leather,
+        0.35,
+      ),
+      onTop(end, 2.3, 4.2, drawerWidth, span - 4.3, apronZ - 4.2, WOOD.frame),
     );
+    for (const z of [4.5, 6.7]) {
+      boxes.push(
+        onTop(end + 0.5, span - 2, z, drawerWidth - 1, 0.45, 2, WOOD.drawer),
+        onTop(end + drawerWidth / 2 - 1.3, span - 1.55, z + 0.86, 2.6, 0.55, 0.45, WOOD.pull, 0.2),
+      );
+    }
   }
   return { boxes, surfaceHeight };
 }
@@ -158,39 +174,27 @@ function coffeeTable(input: RoomModelInput): RoomModel {
   const x = 1;
   const y = occupiedTop(input) + 1;
 
-  // Narrow end bands soften each corner while keeping the whole piece on its footprint.
-  const slab = (
-    inset: number,
-    z: number,
-    height: number,
-    corner: number,
-    colors: Faces,
-  ): RoomBox[] => {
-    const w = width - 2 * inset;
-    const d = depth - 2 * inset;
-    const left = x + inset;
-    const back = y + inset;
-    const step = corner / 2;
-    return [
-      box(left + corner, back, z, w - 2 * corner, step, height, colors),
-      box(left + step, back + step, z, w - 2 * step, step, height, colors),
-      box(left, back + corner, z, w, d - 2 * corner, height, colors),
-      box(left + step, back + d - corner, z, w - 2 * step, step, height, colors),
-      box(left + corner, back + d - step, z, w - 2 * corner, step, height, colors),
-    ];
-  };
-
+  const centerX = x + width / 2;
+  const centerY = y + depth / 2;
+  const centered = (w: number, d: number, z: number, h: number, colors: Faces, radius: number) =>
+    box(centerX - w / 2, centerY - d / 2, z, w, d, h, colors, radius);
+  const legs = corners(width, depth, 2.65, 1.8).flatMap(([u, v]) => [
+    box(x + u, y + v, 0, 1.8, 1.8, 0.8, COFFEE_TABLE.foot, 0.4),
+    box(x + u + 0.25, y + v + 0.25, 0.8, 1.3, 1.3, 4.65, COFFEE_TABLE.stem, 0.4),
+    box(x + u, y + v, 5.45, 1.8, 1.8, 0.7, COFFEE_TABLE.collar, 0.4),
+  ]);
   return {
     surfaceHeight,
     boxes: [
-      ...slab(4.75, 0, 1.5, 4, COFFEE_TABLE.foot),
-      ...slab(7.25, 1.5, 3.25, 3, COFFEE_TABLE.stem),
-      ...slab(6.7, 4.75, 1.25, 3, COFFEE_TABLE.collar),
-      ...slab(0.85, 6, 1.1, 6, COFFEE_TABLE.rim),
-      ...slab(0, 7.1, 0.9, 6, COFFEE_TABLE.rim),
-      ...slab(1.35, 7.75, 0.25, 5, COFFEE_TABLE.glass),
-      box(x + 6, y + 6, 7.85, width - 15, 0.85, 0.15, COFFEE_TABLE.gleam),
-      box(x + 10, y + 7.5, 7.85, width - 21, 0.55, 0.15, COFFEE_TABLE.gleam),
+      ...legs,
+      box(x + 3.5, y + 3.5, 2.1, 0.7, depth - 7, 0.75, COFFEE_TABLE.foot),
+      box(x + width - 4.2, y + 3.5, 2.1, 0.7, depth - 7, 0.75, COFFEE_TABLE.foot),
+      centered(width - 1.5, depth - 1.5, 6.15, 1.15, COFFEE_TABLE.foot, 1.45),
+      centered(width, depth, 7.3, 0.7, COFFEE_TABLE.rim, 1.55),
+      centered(width - 2.1, depth - 2.1, 7.8, 0.2, COFFEE_TABLE.glass, 0.95),
+      box(x + width * 0.18, y + 2.2, 7.85, 0.7, depth - 4.4, 0.15, COFFEE_TABLE.gleam),
+      box(x + width * 0.23, y + 2.2, 7.85, 1.4, depth - 4.4, 0.15, COFFEE_TABLE.gleam),
+      box(x + width * 0.76, y + 2.2, 7.85, 0.4, depth - 4.4, 0.15, COFFEE_TABLE.gleam),
     ],
   };
 }
@@ -211,9 +215,18 @@ function seatSpace(input: RoomModelInput) {
     if (facing === 'back') return { x: x + u, y: y + d - v, z };
     return { x: x + u, y: y + v, z };
   };
-  const place: Piece = (u, v, z, width, depth, height, colors) => {
+  const place: Piece = (u, v, z, width, depth, height, colors, cornerRadius) => {
     const origin = anchor(u, nearBack ? v + depth : v, z);
-    return box(origin.x, origin.y, z, side ? depth : width, side ? width : depth, height, colors);
+    return box(
+      origin.x,
+      origin.y,
+      z,
+      side ? depth : width,
+      side ? width : depth,
+      height,
+      colors,
+      cornerRadius,
+    );
   };
 
   return { width: side ? d : w, depth: side ? w : d, place, anchor, nearBack };
@@ -221,60 +234,89 @@ function seatSpace(input: RoomModelInput) {
 
 function upholsteredSeat(input: RoomModelInput, sofa: boolean): RoomModel {
   const { width, depth, place, anchor, nearBack } = seatSpace(input);
-  const cloth = sofa ? SOFA : WINE;
-  const boxes = [
-    place(1.3, 1.2, 0, width - 2.6, depth - 2.4, 1.8, cloth.plinth),
-    place(0.75, 0.6, 1.8, width - 1.5, depth - 1.2, 1.7, cloth.base),
-    place(0, 0, 3.5, width, depth, 2, cloth.base),
-  ];
-
-  const back = [
-    place(0.25, 0.05, 5.5, width - 0.5, 3.6, 6.6, cloth.cloth),
-    place(0.9, 0.35, 12.1, width - 1.8, 2.8, 1.4, cloth.cloth),
-    place(1.65, 0.85, 13.5, width - 3.3, 1.8, 0.9, cloth.crown),
-    place(1.9, 3.45, 9.6, width - 3.8, 0.45, 1.9, cloth.seat),
-    place(2.3, 3.71, 11.3, width - 4.6, 0.25, 0.45, cloth.welt),
-  ];
-  if (!nearBack) boxes.push(...back);
-
-  const arm = sofa ? 4.1 : 2.5;
-  const armrest = (u: number): RoomBox[] => [
-    place(u + 0.25, 2, 5.5, arm - 0.5, depth - 2.4, 1.65, cloth.base),
-    place(u, 2, 7.15, arm, depth - 2.75, 3.15, cloth.cloth),
-    place(u + 0.5, 2.55, 10.3, arm - 1, depth - 4.15, 1.2, cloth.crown),
-    place(u + 0.52, 2.75, 11.25, arm - 1.04, 0.95, 0.25, cloth.welt),
-    place(u + 0.35, depth - 2.75, 8.7, arm - 0.7, 0.25, 0.66, cloth.welt),
-  ];
-  boxes.push(...armrest(0));
-
-  const cushions = sofa ? 2 : 1;
-  const gap = 0.85;
-  const cushionWidth = (width - 2 * arm - (cushions + 1) * gap) / cushions;
-  const crownBack = 3.35;
-  const crownDepth = depth - 4.25;
-  const crownBase = 7;
-  const crownHeight = 1.1;
-  const anchors: RoomSeatSurface[] = [];
-  for (let i = 0; i < cushions; i++) {
-    const u = arm + gap + i * (cushionWidth + gap);
+  const cloth = sofa ? SOFA : UPHOLSTERY;
+  const metal = !sofa;
+  const arm = sofa ? 2.8 : 1.1;
+  const boxes: RoomBox[] = sofa
+    ? corners(width, depth, 1.15, 1.85).map(([u, v]) =>
+        place(u, v, 0, 1.85, 1.85, 1.8, WOOD.foot, 0.45),
+      )
+    : [0.2, width - 1.35].flatMap((u) => [
+        place(u, 0.7, 0, 1.15, depth - 1.35, 1.15, STEEL.side, 0.35),
+        place(u, 0.7, 1.15, 1.15, 1.3, 4.05, STEEL.rim, 0.3),
+        place(u, depth - 2, 1.15, 1.15, 1.3, 4.05, STEEL.rim, 0.3),
+      ]);
+  if (sofa) {
     boxes.push(
-      place(u, 3, 5.5, cushionWidth, depth - 3.45, 1.5, cloth.seat),
-      place(
-        u + 0.35,
-        crownBack,
-        crownBase,
-        cushionWidth - 0.7,
-        crownDepth,
-        crownHeight,
-        cloth.crown,
-      ),
-      place(u + 0.35, depth - 0.85, 6.25, cushionWidth - 0.7, 0.4, 0.5, cloth.welt),
+      place(0.5, 0.5, 1.8, width - 1, depth - 1, 1.45, WOOD.frame, 1.1),
+      place(0, 0, 3.25, width, depth, 1.05, WOOD.edge, 1.15),
+      place(0.45, 0.35, 4.3, width - 0.9, depth - 0.7, 1.2, cloth.base, 0.8),
     );
-    anchors.push(
-      anchor(u + cushionWidth / 2, crownBack + crownDepth / 2 - 1, crownBase + crownHeight),
-    );
+  } else {
+    boxes.push(place(0.5, 1, 4.35, width - 1, depth - 1.5, 1.15, STEEL.dark, 1.05));
   }
 
+  // The rear rail and the two individual rolls make the division between sofa seats legible.
+  const couchSeats = sofa ? 2 : 1;
+  const gap = 0.55;
+  const cushionWidth = (width - 2 * arm - (couchSeats + 1) * gap) / couchSeats;
+  const back: RoomBox[] = [
+    place(0.6, 0, 5.2, width - 1.2, 2.1, 8, metal ? STEEL.side : cloth.base, 0.7),
+  ];
+  const anchors: RoomSeatSurface[] = [];
+  const seatDepth = depth - 4.65;
+  for (let i = 0; i < couchSeats; i++) {
+    const u = arm + gap + i * (cushionWidth + gap);
+    back.push(
+      place(u - 0.2, 0.5, 5.85, cushionWidth + 0.4, 3.7, 6.7, cloth.cloth, 1.15),
+      place(u + 0.05, 0.65, 12.55, cushionWidth - 0.1, 3.4, 1.15, cloth.seat, 1.12),
+      place(u + 0.43, 0.95, 13.7, cushionWidth - 0.86, 2.78, 0.65, cloth.crown, 0.9),
+    );
+    if (sofa) {
+      for (const f of [0.32, 0.68]) {
+        const button = u + cushionWidth * f;
+        back.push(
+          place(button - 0.47, 4.1, 9.6, 0.94, 0.2, 0.48, cloth.button),
+          place(button - 0.18, 4.12, 9.25, 0.36, 0.22, 1.1, cloth.button),
+          place(button + 0.12, 4.14, 9.25, 0.35, 0.23, 0.36, cloth.welt),
+        );
+      }
+    }
+    anchors.push(anchor(u + cushionWidth / 2, 3.7 + seatDepth / 2 - 0.6, 7.95));
+  }
+
+  if (!nearBack) boxes.push(...back);
+  const armrest = (u: number): RoomBox[] =>
+    metal
+      ? [
+          place(u, 0.7, 5.2, arm, 1, 8, STEEL.side, 0.3),
+          place(u, 1.7, 7.85, arm, depth - 2.85, 0.85, STEEL.rim, 0.35),
+          place(u, depth - 2.1, 5.15, arm, 1.2, 2.7, STEEL.side, 0.35),
+        ]
+      : [
+          place(u, 1.4, 4.3, arm, depth - 1.9, 3.35, WOOD.apron, 0.8),
+          place(u + 0.15, 1.35, 7.65, arm - 0.3, depth - 1.9, 2.1, cloth.cloth, 0.9),
+          place(u + 0.3, 1.55, 9.75, arm - 0.6, depth - 2.35, 0.7, cloth.seat, 0.8),
+          place(u + 0.65, 1.95, 10.45, arm - 1.3, depth - 3.15, 0.35, cloth.crown, 0.6),
+        ];
+  boxes.push(...armrest(0));
+  for (let i = 0; i < couchSeats; i++) {
+    const u = arm + gap + i * (cushionWidth + gap);
+    boxes.push(
+      place(u, 3.55, 5.5, cushionWidth, seatDepth + 0.72, 1.5, cloth.seat, 1.1),
+      place(u + 0.25, 3.75, 7, cushionWidth - 0.5, seatDepth + 0.2, 0.7, cloth.seat, 1.2),
+      place(u + 0.55, 4.05, 7.7, cushionWidth - 1.1, seatDepth - 0.35, 0.25, cloth.crown, 1.2),
+    );
+    if (sofa) {
+      const v = 4.05 + seatDepth * 0.52;
+      const button = u + cushionWidth / 2;
+      boxes.push(
+        place(button - 0.5, v - 0.17, 7.93, 1, 0.38, 0.02, cloth.button),
+        place(button - 0.17, v - 0.5, 7.93, 0.36, 1, 0.02, cloth.button),
+        place(button + 0.22, v + 0.08, 7.93, 0.35, 0.5, 0.02, cloth.welt),
+      );
+    }
+  }
   const foreground = armrest(width - arm);
   if (nearBack) foreground.push(...back);
   boxes.push(...foreground);
@@ -283,44 +325,44 @@ function upholsteredSeat(input: RoomModelInput, sofa: boolean): RoomModel {
 
 function woodenSeat(input: RoomModelInput, bench: boolean, cushioned: boolean): RoomModel {
   const { width, depth, place, anchor, nearBack } = seatSpace(input);
-  const boxes = corners(width, depth, 1.15, 1.65).map(([lx, ly]) =>
-    place(lx, ly, 0, 1.65, 1.65, 5, WOOD.frame),
-  );
+  const boxes = corners(width, depth, 0.95, 1.8).flatMap(([u, v]) => [
+    place(u + 0.18, v + 0.18, 0, 1.44, 1.44, 1, WOOD.foot, 0.23),
+    place(u, v, 1, 1.8, 1.8, 4.2, WOOD.frame, 0.23),
+  ]);
   boxes.push(
-    place(1.25, 2, 2, width - 2.5, 1.15, 1.2, WOOD.apron),
-    place(1.25, depth - 3, 2, width - 2.5, 1.15, 1.2, WOOD.apron),
+    place(1.15, 1.7, 2.6, width - 2.3, 0.86, 0.85, WOOD.apron),
+    place(1.15, depth - 2.55, 2.6, width - 2.3, 0.86, 0.85, WOOD.apron),
+    place(0.55, 1.05, 4.6, width - 1.1, depth - 1.7, 1.1, WOOD.frame, 0.45),
   );
   const back = bench
     ? []
     : [
-        place(1.25, 0.4, 5, 1.6, 1.8, 7.5, WOOD.frame),
-        place(width - 2.85, 0.4, 5, 1.6, 1.8, 7.5, WOOD.frame),
-        place(1, 0.25, 7.5, width - 2, 1.75, 1.35, WOOD.apron),
-        place(1, 0.25, 10, width - 2, 1.75, 1.5, WOOD.apron),
-        place(0.65, 0.1, 12.5, width - 1.3, 2, 1.1, WOOD.edge),
+        place(0.85, 0.25, 5.7, 1.65, 1.8, 10.1, WOOD.frame, 0.35),
+        place(width - 2.5, 0.25, 5.7, 1.65, 1.8, 10.1, WOOD.frame, 0.35),
+        place(1.4, 0.65, 9.2, width - 2.8, 1.25, 1.4, WOOD.apron, 0.3),
+        place(0.8, 0.35, 12.2, width - 1.6, 1.8, 2.5, WOOD.surface, 0.5),
+        place(1.25, 0.45, 14.7, width - 2.5, 1.5, 0.7, WOOD.edge, 0.4),
       ];
-
   if (!nearBack) boxes.push(...back);
-  const topBack = cushioned ? 1.8 : 0.8;
-  const topDepth = depth - (cushioned ? 3 : 1.1);
-  const topBase = cushioned ? 7.85 : 5;
-  const topHeight = cushioned ? 0.65 : 1.45;
-  boxes.push(place(0, 0.8, 5, width, depth - 1.1, 1.45, WOOD.edge));
+  const topBack = cushioned ? 1.45 : 0.6;
+  const topDepth = depth - (cushioned ? 2.2 : 1.15);
+  const topHeight = cushioned ? 8.5 : 6.45;
+  boxes.push(place(0, 0.6, 5.7, width, depth - 1.15, 0.75, WOOD.edge, 0.65));
   if (cushioned) {
     boxes.push(
-      place(0.7, 1.3, 6.45, width - 1.4, depth - 2, 1.4, BENCH.seat),
-      place(1.2, topBack, topBase, width - 2.4, topDepth, topHeight, BENCH.crown),
-      place(1, depth - 1.2, 7.15, width - 2, 0.5, 0.4, BENCH.welt),
+      place(0.35, 1.1, 6.45, width - 0.7, depth - 1.6, 1.25, BENCH.seat, 0.8),
+      place(0.8, topBack, 7.7, width - 1.6, topDepth, 0.8, BENCH.crown, 0.8),
+      place(1.1, depth - 1, 7.1, width - 2.2, 0.35, 0.32, BENCH.welt),
     );
   } else {
-    boxes.push(
-      place(1, depth * 0.4, 6.25, width - 2, 0.65, 0.2, WOOD.seam),
-      place(1, depth * 0.66, 6.25, width - 2, 0.55, 0.2, WOOD.grain),
-    );
+    for (const t of [0.34, 0.67]) {
+      boxes.push(place(0.7, depth * t, 6.31, width - 1.4, 0.62, 0.14, WOOD.seam));
+    }
+    boxes.push(place(width * 0.18, depth * 0.8, 6.34, width * 0.4, 0.41, 0.11, WOOD.grain));
   }
   const foreground = nearBack ? back : [];
   boxes.push(...foreground);
-  const hips = anchor(width / 2, topBack + topDepth / 2 - (bench ? 0 : 1), topBase + topHeight);
+  const hips = anchor(width / 2, topBack + topDepth / 2 - (bench ? 0 : 1), topHeight);
   return { boxes, seating: { anchors: [hips], foreground } };
 }
 

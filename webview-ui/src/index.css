@@ -69,6 +69,33 @@
   --btn-disabled-opacity: 0.35;
 }
 
+/* The browser room's hotel-client chrome. The terminal owns its own ANSI palette. */
+[data-hotel-room] {
+  --color-bg: #25353c;
+  --color-bg-dark: #18252c;
+  --color-bg-thumb: #33464b;
+  --color-border: #697b7e;
+  --color-panel: #2d4048;
+  --color-panel-hover: #40575d;
+  --color-btn-bg: #405760;
+  --color-btn-hover: #526e76;
+  --color-active-bg: #25484d;
+  --color-accent: #126e7a;
+  --color-accent-bright: #65c7c6;
+  --color-text-muted: #b6c5c9;
+  --color-text-muted-solid: #beccd0;
+  --color-shadow: #101b20;
+  --shadow-pixel: inset 1px 1px #819397, inset -1px -1px #203139, 2px 2px #101b20;
+  --shadow-pixel-pressed: inset 1px 1px #203139, inset -1px -1px #819397;
+}
+
+[data-hotel-room] button.shadow-pixel {
+  border-radius: 4px;
+  font-family: Verdana, Arial, sans-serif;
+  font-size: 12px;
+  font-weight: bold;
+}
+
 @theme inline {
   /* 1px base so Tailwind spacing maps directly to pixels (pixel-art project) */
   --spacing: 1px;

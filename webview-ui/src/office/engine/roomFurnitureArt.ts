@@ -1,9 +1,10 @@
 import { ROOM_COLORS } from '../../constants.js';
 import { adjustSprite, colorizeSprite } from '../colorize.js';
 import { getCatalogEntry } from '../layout/furnitureCatalog.js';
-import type { RoomModel, RoomModelInput, RoomSeatSurface } from '../roomModel.js';
+import type { RoomBox, RoomModel, RoomModelInput, RoomSeatSurface } from '../roomModel.js';
 import type { RoomPoint, RoomProjection } from '../roomProjection.js';
-import { roomFurnitureBounds, roomProjection } from '../roomProjection.js';
+import { ROOM_NATIVE_SCALE, roomFurnitureBounds, roomProjection } from '../roomProjection.js';
+import { roomFaceSpans } from '../roomRaster.js';
 import type { FurnitureInstance, OfficeLayout, SpriteData } from '../types.js';
 import { TILE_SIZE, TileType } from '../types.js';
 import type { OfficeState } from './officeState.js';
@@ -12,6 +13,7 @@ import { roomSeatingModel } from './roomSeatingModels.js';
 
 interface RoomSprite {
   pixels: SpriteData;
+  /** Left and top are in source pixels measured from the projected world-space anchor. */
   left: number;
   top: number;
   footprint?: { left: number; top: number; right: number; bottom: number };
@@ -33,28 +35,68 @@ export interface RoomSeatArt extends RoomSeatSurface {
 interface Face {
   corners: RoomPoint[];
   color: string;
+  foreground: boolean;
 }
 
-const localProjection = roomProjection(0, 0, 0, 0, 1, 0, 0);
+const localProjection = roomProjection(0, 0, 0, 0, ROOM_NATIVE_SCALE, 0, 0);
 const sprites = new Map<string, RoomSprite>();
 const SPRITE_CACHE_SIZE = 256;
 
-/** Rasterize the original cuboids once, with crisp edges at every room zoom. */
-function rasterize(model: RoomModel): RoomSprite {
-  const faces: Face[] = [];
-  for (const { x, y, z, width, depth, height, colors } of model.boxes) {
-    const a = localProjection.toScreen(x, y);
-    const b = localProjection.toScreen(x + width, y);
-    const c = localProjection.toScreen(x + width, y + depth);
-    const d = localProjection.toScreen(x, y + depth);
-    const lift = (p: RoomPoint, amount: number) => ({ x: p.x, y: p.y - amount });
-    const top = [a, b, c, d].map((p) => lift(p, z + height));
-    faces.push(
-      { corners: top, color: colors[0] },
-      { corners: [top[2], top[1], lift(b, z), lift(c, z)], color: colors[1] },
-      { corners: [top[3], top[2], lift(c, z), lift(d, z)], color: colors[2] },
-    );
+function bevelColor(a: string, b: string): string {
+  // The front chamfer receives light between its two adjoining faces.
+  if (a === b) return a;
+  const mixed = [1, 3, 5].map((start) =>
+    Math.round(
+      (parseInt(a.slice(start, start + 2), 16) + parseInt(b.slice(start, start + 2), 16)) / 2,
+    )
+      .toString(16)
+      .padStart(2, '0'),
+  );
+  return '#' + mixed.join('');
+}
+
+function projectedFaces(box: RoomBox, foreground: boolean): Face[] {
+  const { x, y, z, width, depth, height, colors } = box;
+  const r = Math.max(0, Math.min(box.cornerRadius ?? 0, width / 2, depth / 2));
+  const corners =
+    r > 0
+      ? [
+          [r, 0],
+          [width - r, 0],
+          [width, r],
+          [width, depth - r],
+          [width - r, depth],
+          [r, depth],
+          [0, depth - r],
+          [0, r],
+        ]
+      : [
+          [0, 0],
+          [width, 0],
+          [width, depth],
+          [0, depth],
+        ];
+  const bottom = corners.map(([u, v]) => {
+    const ground = localProjection.toScreen(x + u, y + v);
+    return { x: ground.x, y: ground.y - z * ROOM_NATIVE_SCALE };
+  });
+  const top = bottom.map((p) => ({ x: p.x, y: p.y - height * ROOM_NATIVE_SCALE }));
+  const faces: Face[] = [{ corners: top, color: colors[0], foreground }];
+  for (let i = 0; i < corners.length; i++) {
+    const j = (i + 1) % corners.length;
+    if (bottom[j].x >= bottom[i].x) continue; // An edge turning away from the camera.
+    const dx = corners[j][0] - corners[i][0];
+    const dy = corners[j][1] - corners[i][1];
+    const color = dx === 0 ? colors[1] : dy === 0 ? colors[2] : bevelColor(colors[1], colors[2]);
+    faces.push({ corners: [top[i], top[j], bottom[j], bottom[i]], color, foreground });
   }
+  return faces;
+}
+
+/** Rasterize authored world-space geometry once on the same source-pixel grid as characters. */
+export function rasterizeRoomFurniture(model: RoomModel): RoomSprite {
+  const foregroundPieces = new Set(model.seating?.foreground);
+  const faces = model.boxes.flatMap((box) => projectedFaces(box, foregroundPieces.has(box)));
   const corners = faces.flatMap((face) => face.corners);
   const left = Math.floor(Math.min(...corners.map((p) => p.x))) - 1;
   const top = Math.floor(Math.min(...corners.map((p) => p.y))) - 1;
@@ -64,20 +106,14 @@ function rasterize(model: RoomModel): RoomSprite {
     new Array<string>(right - left).fill(''),
   );
 
+  const frontMask = foregroundPieces.size
+    ? Array.from({ length: bottom - top }, () => new Uint8Array(right - left))
+    : undefined;
   for (const face of faces) {
-    const xs = face.corners.map((p) => p.x);
-    const ys = face.corners.map((p) => p.y);
-    const maxY = Math.ceil(Math.max(...ys));
-    const maxX = Math.ceil(Math.max(...xs));
-    for (let y = Math.floor(Math.min(...ys)); y < maxY; y++) {
-      for (let x = Math.floor(Math.min(...xs)); x < maxX; x++) {
-        const inside = face.corners.every((a, i) => {
-          const b = face.corners[(i + 1) % 4];
-          return (b.x - a.x) * (y + 0.5 - a.y) - (b.y - a.y) * (x + 0.5 - a.x) >= -1e-6;
-        });
-        if (inside) pixels[y - top][x - left] = face.color;
-      }
-    }
+    roomFaceSpans(face.corners, (y, start, end) => {
+      pixels[y - top].fill(face.color, start - left, end - left);
+      frontMask?.[y - top].fill(face.foreground ? 1 : 0, start - left, end - left);
+    });
   }
 
   const ground = model.boxes.filter(({ z }) => z === 0);
@@ -100,15 +136,21 @@ function rasterize(model: RoomModel): RoomSprite {
   );
   const seating = model.seating;
   let foreground: RoomSprite | undefined;
-  if (seating?.foreground.length) {
-    foreground = rasterize({ boxes: seating.foreground });
-    // An isolated armrest has an outline of its own. Preserve only the
-    // pixels the full chair really shows, so sitting adds no new seams.
-    const dx = foreground.left - left;
-    const dy = foreground.top - top;
-    foreground.pixels = foreground.pixels.map((row, y) =>
-      row.map((pixel, x) => (pixel === outlined[y + dy]?.[x + dx] ? pixel : '')),
+  if (frontMask) {
+    // Share the full chair's crop so both images sample the same device pixels even at fractional zoom.
+    const mask = outlined.map((row, y) =>
+      row.map((pixel, x) => {
+        const visible =
+          frontMask[y][x] ||
+          (!pixels[y][x] &&
+            (frontMask[y][x - 1] ||
+              frontMask[y][x + 1] ||
+              frontMask[y - 1]?.[x] ||
+              frontMask[y + 1]?.[x]));
+        return visible ? pixel : '';
+      }),
     );
+    foreground = { left, top, pixels: mask };
   }
   return {
     left,
@@ -222,7 +264,7 @@ export function roomFurnitureArt(
     if (!sprite) {
       const model = seating ?? roomAccessoryModel(modelInput);
       if (!model) return fallback;
-      sprite = rasterize(model);
+      sprite = rasterizeRoomFurniture(model);
       if (placement.color) {
         const tint = placement.color.colorize ? colorizeSprite : adjustSprite;
         sprite.pixels = tint(sprite.pixels, placement.color);
@@ -295,14 +337,18 @@ export function roomFurnitureSpriteBounds(
   projection: Pick<RoomProjection, 'toScreen'>,
   zoom: number,
   sprite = art.model?.sprite,
-): { x: number; y: number; width: number; depth: number } {
+): { x: number; y: number; width: number; height: number; pixelZoom: number; depth: number } {
   const model = art.model;
-  if (!model || !sprite) return roomFurnitureBounds(art.furniture, projection, zoom);
+  if (!model || !sprite)
+    return { ...roomFurnitureBounds(art.furniture, projection, zoom), pixelZoom: zoom };
   const anchor = projection.toScreen(model.x, model.y);
+  const pixelZoom = zoom / ROOM_NATIVE_SCALE;
   return {
-    x: Math.round(anchor.x + sprite.left * zoom),
-    y: Math.round(anchor.y + sprite.top * zoom),
-    width: Math.floor(sprite.pixels[0].length * zoom),
+    x: Math.round(anchor.x + sprite.left * pixelZoom),
+    y: Math.round(anchor.y + sprite.top * pixelZoom),
+    width: sprite.pixels[0].length * pixelZoom,
+    height: sprite.pixels.length * pixelZoom,
+    pixelZoom,
     depth: projection.toScreen(model.depthX, model.depthY).y,
   };
 }

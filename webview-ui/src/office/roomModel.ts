@@ -7,6 +7,8 @@ export interface RoomBox {
   width: number;
   depth: number;
   height: number;
+  /** Distance of a 45-degree corner cut on each edge of the horizontal footprint. */
+  cornerRadius?: number;
   colors: readonly [top: string, xFace: string, yFace: string];
 }
 

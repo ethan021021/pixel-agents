@@ -50,6 +50,7 @@ beforeAll(() => {
     { ...furniture, id: 'VISITOR_DESK', category: 'desks', isDesk: true },
     { ...furniture, id: 'VISITOR_SHARED_DESK', category: 'desks', isDesk: true, footprintW: 3 },
     { ...furniture, id: 'VISITOR_PC', category: 'electronics', isDesk: false },
+    { ...furniture, id: 'COFFEE', category: 'misc', isDesk: false, canPlaceOnSurfaces: true },
     {
       ...furniture,
       id: 'DESK_FRONT',
@@ -70,6 +71,7 @@ beforeAll(() => {
         VISITOR_DESK: [['d']],
         VISITOR_SHARED_DESK: [['d']],
         VISITOR_PC: [['p']],
+        COFFEE: [['m']],
         DESK_FRONT: [['d']],
       },
     }),
@@ -307,19 +309,58 @@ test('picks the original desk from its modeled pixels and preserves custom furni
   const room = roomProjection(640, 480, saved.cols, saved.rows, zoom, 0, 0);
   const bounds = roomFurnitureSpriteBounds(desk, room, zoom);
   const pickPixel = (color: string) => {
-    const row = desk.pixels.findIndex((line) => line.includes(color));
-    assert.ok(row >= 0);
-    const col = desk.pixels[row].indexOf(color);
-    return roomActorAt(
-      office,
-      room,
-      zoom,
-      bounds.x + (col + 0.5) * zoom,
-      bounds.y + (row + 0.5) * zoom,
-    );
+    for (let y = 0; y < bounds.height; y++) {
+      for (let x = 0; x < bounds.width; x++) {
+        const pixel =
+          desk.pixels[Math.floor((y + 0.5) / bounds.pixelZoom)]?.[
+            Math.floor((x + 0.5) / bounds.pixelZoom)
+          ];
+        if (pixel === color) return roomActorAt(office, room, zoom, bounds.x + x, bounds.y + y);
+      }
+    }
+    assert.fail('No painted device pixel in the selected color');
   };
   assert.equal(pickPixel(tabletop.colors[0]).furniture?.uid, 'modeled-desk');
   assert.equal(pickPixel('').furniture, null);
+});
+
+test('a native tabletop prop sits at the surface height and receives clicks ahead of the desk', () => {
+  const floor = layout();
+  floor.furniture = [{ uid: 'mug', type: 'COFFEE', col: 2, row: 4 }];
+  const table = {
+    ...floor,
+    furniture: [{ uid: 'support', type: 'DESK_FRONT', col: 1, row: 3 }, ...floor.furniture],
+  };
+  const bare = new OfficeState(floor);
+  const office = new OfficeState(table);
+  const onFloor = roomFurnitureArt(bare.furniture, floor)[0];
+  const furnished = roomFurnitureArt(office.furniture, table);
+  const mug = furnished.find(({ furniture }) => furniture.uid === 'mug')!;
+  const desk = furnished.find(({ furniture }) => furniture.uid === 'support')!;
+  assert.ok(desk.surfaceHeight && mug.model && onFloor.model);
+  for (const zoom of [1, 3, 5]) {
+    const view = roomProjection(640, 480, table.cols, table.rows, zoom, 0, 0);
+    const ground = roomFurnitureSpriteBounds(onFloor, view, zoom);
+    const bounds = roomFurnitureSpriteBounds(mug, view, zoom);
+    assert.equal(bounds.x, ground.x);
+    assert.ok(Math.abs(ground.y - bounds.y - desk.surfaceHeight * zoom) <= 1);
+    assert.ok(bounds.depth > roomFurnitureSpriteBounds(desk, view, zoom).depth);
+    let selected = 0;
+    for (let y = 0; y < bounds.height; y++)
+      for (let x = 0; x < bounds.width; x++) {
+        const native =
+          mug.pixels[Math.floor((y + 0.5) / bounds.pixelZoom)]?.[
+            Math.floor((x + 0.5) / bounds.pixelZoom)
+          ];
+        if (!native) continue;
+        assert.equal(
+          roomActorAt(office, view, zoom, bounds.x + x, bounds.y + y).furniture?.uid,
+          'mug',
+        );
+        selected++;
+      }
+    assert.ok(selected);
+  }
 });
 
 test('opens only a reachable desk and rechecks its terminal on arrival', () => {

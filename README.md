@@ -96,6 +96,8 @@ The printed URL carries a `?token=`. Without it you can watch the office in a so
 
 ### Walk around the office
 
+The browser opens onto the isometric room. Select an agent to reach its terminal, or use **Walk around** to enter as a visitor. **Layout** opens the tile editor for arranging furniture and workstations.
+
 In the editable browser office, choose **Walk around**, then pick a character from your wardrobe. Click or tap a floor tile to walk there, an unassigned chair to sit, or a pet to give it a heart. Click yourself for **Wave**, or press Enter when the floor is focused. The arrow keys also move your character. Click an agent to see their status and click again to open their terminal. You can also click a desk with a live browser terminal to walk over and open it.
 
 The angled view uses your existing office layout. Choose **Leave office** to return to the flat view whenever you like.

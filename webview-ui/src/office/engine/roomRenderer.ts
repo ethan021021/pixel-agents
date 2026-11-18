@@ -3,11 +3,15 @@ import {
   HEADLESS_CHARACTER_ALPHA,
   HOVERED_OUTLINE_ALPHA,
   ROOM_COLORS,
+  SEAT_AVAILABLE_COLOR,
+  SEAT_BUSY_COLOR,
+  SEAT_OWN_COLOR,
   SELECTED_OUTLINE_ALPHA,
   VISITOR_ID,
 } from '../../constants.js';
 import { isWalkable } from '../layout/tileMap.js';
 import type { RoomPoint, RoomProjection } from '../roomProjection.js';
+import { roomSampleInset } from '../roomRaster.js';
 import { getPetSprites } from '../sprites/petSpriteData.js';
 import { getCachedSprite, getOutlineSprite } from '../sprites/spriteCache.js';
 import { BUBBLE_HEART_SPRITE } from '../sprites/spriteData.js';
@@ -30,16 +34,16 @@ function drawFurniture(
   foreground: boolean,
 ): void {
   const sprite = foreground ? art.model?.sprite.seating?.foreground : art.model?.sprite;
-  const { x, y, width } = roomFurnitureSpriteBounds(art, projection, zoom, sprite);
-  const image = getCachedSprite(sprite?.pixels ?? art.pixels, zoom);
+  const { x, y, width, pixelZoom } = roomFurnitureSpriteBounds(art, projection, zoom, sprite);
+  const image = getCachedSprite(sprite?.pixels ?? art.pixels, 1);
   if (art.mirror) {
     ctx.save();
     ctx.translate(x + width, y);
     ctx.scale(-1, 1);
-    ctx.drawImage(image, 0, 0);
+    drawRoomBitmap(ctx, image, 0, 0, pixelZoom);
     ctx.restore();
   } else {
-    ctx.drawImage(image, x, y);
+    drawRoomBitmap(ctx, image, x, y, pixelZoom);
   }
 }
 
@@ -51,7 +55,7 @@ function footShadow(ctx: CanvasRenderingContext2D, foot: RoomPoint, zoom: number
   ctx.fillRect(x - 3 * zoom, y - 2 * zoom, 6 * zoom, 4 * zoom);
 }
 
-function drawCharacterBitmap(
+function drawRoomBitmap(
   ctx: CanvasRenderingContext2D,
   image: HTMLCanvasElement,
   x: number,
@@ -61,7 +65,7 @@ function drawCharacterBitmap(
   // Canvas engines can choose either texel when a device-pixel center sits
   // directly between two. Bias the source sample to the higher index used by
   // hit testing. The destination bounds still share the same foot and hip.
-  const inset = Number.isInteger(pixelZoom) ? 0 : 1 / 16;
+  const inset = roomSampleInset(pixelZoom);
   ctx.drawImage(
     image,
     inset,
@@ -143,17 +147,11 @@ export function renderRoom(
         ctx.save();
         ctx.globalAlpha = alpha;
         if (character.matrixEffect) {
-          drawCharacterBitmap(
-            ctx,
-            roomMatrixSprite(character, pixels, nativeScale),
-            x,
-            y,
-            pixelZoom,
-          );
+          drawRoomBitmap(ctx, roomMatrixSprite(character, pixels, nativeScale), x, y, pixelZoom);
         } else {
           if (selected || hovered) {
             ctx.globalAlpha = selected ? SELECTED_OUTLINE_ALPHA : HOVERED_OUTLINE_ALPHA;
-            drawCharacterBitmap(
+            drawRoomBitmap(
               ctx,
               getCachedSprite(getOutlineSprite(pixels), 1),
               x - pixelZoom,
@@ -162,7 +160,7 @@ export function renderRoom(
             );
             ctx.globalAlpha = alpha;
           }
-          drawCharacterBitmap(ctx, getCachedSprite(pixels, 1), x, y, pixelZoom);
+          drawRoomBitmap(ctx, getCachedSprite(pixels, 1), x, y, pixelZoom);
         }
         ctx.restore();
       },
@@ -204,6 +202,35 @@ export function renderRoom(
   }
   sprites.sort((a, b) => a.depth - b.depth);
   for (const sprite of sprites) sprite.draw();
+  if (!office.visitor && hover && office.selectedAgentId !== null) {
+    const uid = office.getSeatAtTile(hover.col, hover.row);
+    const seat = uid && office.seats.get(uid);
+    if (seat) {
+      const cushion = roomSeatArt(office, seat.uid);
+      const point = projection.toScreen(
+        cushion?.x ?? (hover.col + 0.5) * TILE_SIZE,
+        cushion?.y ?? (hover.row + 0.5) * TILE_SIZE,
+      );
+      const y = point.y - (cushion?.z ?? 0) * zoom;
+      const radius = 4 * zoom;
+      const color =
+        office.characters.get(office.selectedAgentId)?.seatId === uid
+          ? SEAT_OWN_COLOR
+          : seat.assigned
+            ? SEAT_BUSY_COLOR
+            : SEAT_AVAILABLE_COLOR;
+      roomPolygon(
+        ctx,
+        [
+          { x: point.x, y: y - radius / 2 },
+          { x: point.x + radius, y },
+          { x: point.x, y: y + radius / 2 },
+          { x: point.x - radius, y },
+        ],
+        color,
+      );
+    }
+  }
   for (const overlay of overlays) overlay();
   ctx.restore();
 }
