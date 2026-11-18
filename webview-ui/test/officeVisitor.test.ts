@@ -220,7 +220,16 @@ test('anchors each sofa occupant to their cushion and keeps the visible head cli
   assert.ok(other);
   assert.ok(seat.x > other.x);
   assert.equal(seat.chair, other.chair);
-  assert.ok(seat.chair.model?.sprite.seating?.foreground);
+  const whole = seat.chair.model?.sprite;
+  const front = whole?.seating?.foreground;
+  assert.ok(whole && front);
+  for (const [y, row] of front.pixels.entries()) {
+    for (const [x, pixel] of row.entries()) {
+      if (pixel) {
+        assert.equal(pixel, whole.pixels[y + front.top - whole.top][x + front.left - whole.left]);
+      }
+    }
+  }
 
   const zoom = 3;
   const view = roomProjection(640, 480, saved.cols, saved.rows, zoom, 0, 0);

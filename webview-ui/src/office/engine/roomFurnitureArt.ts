@@ -89,26 +89,33 @@ function rasterize(model: RoomModel): RoomSprite {
         bottom: Math.max(...ground.map((box) => box.y + box.depth)),
       }
     : undefined;
-  const seating = model.seating && {
-    anchors: model.seating.anchors,
-    foreground: model.seating.foreground.length
-      ? rasterize({ boxes: model.seating.foreground })
-      : undefined,
-  };
+  const outlined = pixels.map((row, y) =>
+    row.map(
+      (pixel, x) =>
+        pixel ||
+        (row[x - 1] || row[x + 1] || pixels[y - 1]?.[x] || pixels[y + 1]?.[x]
+          ? ROOM_COLORS.furnitureOutline
+          : ''),
+    ),
+  );
+  const seating = model.seating;
+  let foreground: RoomSprite | undefined;
+  if (seating?.foreground.length) {
+    foreground = rasterize({ boxes: seating.foreground });
+    // An isolated armrest has an outline of its own. Preserve only the
+    // pixels the full chair really shows, so sitting adds no new seams.
+    const dx = foreground.left - left;
+    const dy = foreground.top - top;
+    foreground.pixels = foreground.pixels.map((row, y) =>
+      row.map((pixel, x) => (pixel === outlined[y + dy]?.[x + dx] ? pixel : '')),
+    );
+  }
   return {
     left,
     top,
     footprint,
-    seating,
-    pixels: pixels.map((row, y) =>
-      row.map(
-        (pixel, x) =>
-          pixel ||
-          (row[x - 1] || row[x + 1] || pixels[y - 1]?.[x] || pixels[y + 1]?.[x]
-            ? ROOM_COLORS.furnitureOutline
-            : ''),
-      ),
-    ),
+    seating: seating && { anchors: seating.anchors, foreground },
+    pixels: outlined,
   };
 }
 
