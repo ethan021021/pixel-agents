@@ -11,6 +11,7 @@ import { PixelIcon } from './ui/PixelIcon.js';
 export interface AgentAppearance {
   palette: number;
   repeat: number;
+  roomPortrait?: boolean;
 }
 
 /** Agent activity reflected by the tab's status dot. */
@@ -71,6 +72,7 @@ export function AgentCard({
         palette={appearance.palette}
         repeat={appearance.repeat}
         cropTop={CARD_MUGSHOT_CROP_TOP_ROW}
+        roomPortrait={appearance.roomPortrait}
       />
       {/* Close on top, status dot at the bottom, both centred over the
           same column beside the mug shot. */}

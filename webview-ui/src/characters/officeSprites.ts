@@ -10,6 +10,7 @@ import { sheetToDirectionSprites } from '../../../core/src/assets/characterSheet
 import { SHEET_FRAMES } from '../../../core/src/assets/seatedFrame.js';
 import type { CharacterDirectionSprites } from '../../../core/src/assets/types.js';
 import type { CharacterProfile } from '../../../core/src/characterProfiles.js';
+import { DEFAULT_CHARACTER_PROFILES } from '../../../core/src/defaultCharacterProfiles.js';
 import { CAST_OFFICE_SYNC_MS } from '../constants.js';
 import { adjustSprite } from '../office/colorize.js';
 import { setCharacterTemplates } from '../office/sprites/spriteData.js';
@@ -31,6 +32,24 @@ interface CastSource {
 
 /** The reading frames in a sheet row. */
 const READ_FRAMES = new Set<number>(SHEET_FRAMES.read);
+
+const roomPresets = new Map(
+  DEFAULT_CHARACTER_PROFILES.map((profile, index) => [profile.id, { profile, index }]),
+);
+
+/** A bundled profile keeps its room design while its wardrobe looks the same. */
+function roomCastIndex(
+  profile: CharacterProfile,
+  sheet: Uint8ClampedArray,
+  renderer: CharacterRenderer,
+): number | undefined {
+  const preset = roomPresets.get(profile.id);
+  if (!preset) return undefined;
+  const original = renderer.sheet(preset.profile);
+  return sheet === original || sheet.every((value, i) => value === original[i])
+    ? preset.index
+    : undefined;
+}
 
 /** Each sheet's office sprites, converted once (sheets are cached, immutable buffers). */
 const converted = new WeakMap<Uint8ClampedArray, CharacterDirectionSprites>();
@@ -89,18 +108,27 @@ function sync(): void {
   if (!source) return;
   const { renderer, profiles } = source.getState();
   if (!renderer || !profiles.length) return;
-  const sprites = profiles.map((p) => officeSpritesOf(renderer.sheet(p)));
-  // The repeats are drawn from this same cast, so they never fall out of step.
-  setCharacterTemplates([...sprites, ...external], (palette, repeat, blink) => {
-    const profile = profiles[palette];
-    if (profile) {
-      const worn = repeat ? withRepeatClothes(profile, repeat) : profile;
-      return blink ? blinkSprites(renderer, profile, worn) : officeSpritesOf(renderer.sheet(worn));
-    }
-    // External char_N.png sprites have no eyes to shut.
-    const sprite = blink ? null : external[palette - profiles.length];
-    return sprite ? hueTurned(sprite, repeat) : null;
+  const cast = profiles.map((profile) => {
+    const sheet = renderer.sheet(profile);
+    return { sprites: officeSpritesOf(sheet), room: roomCastIndex(profile, sheet, renderer) };
   });
+  // The repeats are drawn from this same cast, so they never fall out of step.
+  setCharacterTemplates(
+    [...cast.map(({ sprites }) => sprites), ...external],
+    (palette, repeat, blink) => {
+      const profile = profiles[palette];
+      if (profile) {
+        const worn = repeat ? withRepeatClothes(profile, repeat) : profile;
+        return blink
+          ? blinkSprites(renderer, profile, worn)
+          : officeSpritesOf(renderer.sheet(worn));
+      }
+      // External char_N.png sprites have no eyes to shut.
+      const sprite = blink ? null : external[palette - profiles.length];
+      return sprite ? hueTurned(sprite, repeat) : null;
+    },
+    cast.map(({ room }) => room),
+  );
   synced = true;
 }
 

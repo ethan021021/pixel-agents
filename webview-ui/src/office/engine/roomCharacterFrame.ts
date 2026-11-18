@@ -4,10 +4,12 @@ import {
   VISITOR_WAVE_BEAT_SEC,
 } from '../../constants.js';
 import type { RoomProjection } from '../roomProjection.js';
-import { getCharacterSprites } from '../sprites/spriteData.js';
+import { getCharacterRoomCastIndex, getCharacterSprites } from '../sprites/spriteData.js';
 import type { Character } from '../types.js';
 import { CharacterState, Direction, TILE_SIZE } from '../types.js';
 import { getCharacterSprite, isReadingTool } from './characters.js';
+import { roomCastSprite } from './roomCast.js';
+import type { RoomCharacterPose } from './roomCharacterArt.js';
 import {
   ROOM_CHARACTER_NATIVE_SCALE,
   ROOM_SEATED_FRAME_HEIGHT,
@@ -20,9 +22,7 @@ import { roomFurnitureSpriteBounds } from './roomFurnitureArt.js';
 const stride = [-1, 0, 1, 0] as const;
 
 function roomCharacterPixels(character: Character) {
-  const sprites = getCharacterSprites(character.palette, character.repeat, character.blinkShut > 0);
   const sitting = character.state === CharacterState.TYPE && character.seatId !== null;
-  const source = getCharacterSprite(character, sprites);
   const wave = character.visitorWave ?? 0;
   let gesture: 'rest' | 'type' | 'read' | 'wave' = 'rest';
   if (wave > 0) gesture = 'wave';
@@ -30,13 +30,25 @@ function roomCharacterPixels(character: Character) {
     gesture = isReadingTool(character.currentTool) ? 'read' : 'type';
   }
   const beat = wave > 0 ? Math.floor(wave / VISITOR_WAVE_BEAT_SEC) : character.frame;
-  const pixels = roomCharacterSprite(source, character.dir, sitting, {
-    standing: sprites.walk[character.dir][1],
-    front: sprites.walk[Direction.DOWN][1],
+  const pose: RoomCharacterPose = {
     stride: character.state === CharacterState.WALK ? stride[character.frame % 4] : 0,
     gesture,
     beat: beat % 2 === 0 ? 0 : 1,
     blink: character.blinkShut > 0,
+  };
+  const preset = getCharacterRoomCastIndex(character.palette);
+  if (preset !== undefined) {
+    return {
+      pixels: roomCastSprite(preset, character.dir, sitting, pose, character.repeat),
+      nativeScale: ROOM_CHARACTER_NATIVE_SCALE,
+    };
+  }
+  const sprites = getCharacterSprites(character.palette, character.repeat, pose.blink);
+  const source = getCharacterSprite(character, sprites);
+  const pixels = roomCharacterSprite(source, character.dir, sitting, {
+    ...pose,
+    standing: sprites.walk[character.dir][1],
+    front: sprites.walk[Direction.DOWN][1],
   });
   return { pixels, nativeScale: pixels === source ? 1 : ROOM_CHARACTER_NATIVE_SCALE };
 }

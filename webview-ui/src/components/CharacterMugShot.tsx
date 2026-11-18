@@ -6,8 +6,11 @@ import {
   MUGSHOT_CROP_TOP_ROW,
   MUGSHOT_RENDER_ZOOM,
 } from '../constants.js';
+import { roomCastSprite } from '../office/engine/roomCast.js';
+import { ROOM_CHARACTER_NATIVE_SCALE } from '../office/engine/roomCharacterArt.js';
 import { getCachedSprite } from '../office/sprites/spriteCache.js';
 import {
+  getCharacterRoomCastIndex,
   getCharacterSprites,
   getCharacterTemplatesVersion,
   subscribeCharacterTemplates,
@@ -21,6 +24,8 @@ interface CharacterMugShotProps {
   zoom?: number;
   /** First sprite row of the crop. Defaults to MUGSHOT_CROP_TOP_ROW. */
   cropTop?: number;
+  /** Use the independent room portrait when selecting a visitor. */
+  roomPortrait?: boolean;
 }
 
 /**
@@ -36,6 +41,7 @@ export function CharacterMugShot({
   repeat,
   zoom = MUGSHOT_RENDER_ZOOM,
   cropTop = MUGSHOT_CROP_TOP_ROW,
+  roomPortrait,
 }: CharacterMugShotProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // Redraw when the character sprites change (the cast arrives or is edited).
@@ -47,16 +53,24 @@ export function CharacterMugShot({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const front = getCharacterSprites(palette, repeat).walk[Direction.DOWN][0];
-    const full = getCachedSprite(front, zoom);
-
     const side = MUGSHOT_CROP_SIDE_PX * zoom;
+    const roomCastIndex = roomPortrait ? getCharacterRoomCastIndex(palette) : undefined;
+    const room = roomCastIndex !== undefined;
+    const front = room
+      ? roomCastSprite(roomCastIndex, Direction.DOWN, false, undefined, repeat)
+      : getCharacterSprites(palette, repeat).walk[Direction.DOWN][0];
+    const full = getCachedSprite(front, room ? 1 : zoom);
+    const sourceSide = room ? MUGSHOT_CROP_SIDE_PX * ROOM_CHARACTER_NATIVE_SCALE : side;
+    const left = room ? Math.floor((full.width - sourceSide) / 2) : MUGSHOT_CROP_LEFT_COL * zoom;
+    const top = room
+      ? Math.max(0, front.findIndex((row) => row.some(Boolean)) - ROOM_CHARACTER_NATIVE_SCALE)
+      : cropTop * zoom;
     canvas.width = side;
     canvas.height = side;
     ctx.imageSmoothingEnabled = false;
     ctx.clearRect(0, 0, side, side);
-    ctx.drawImage(full, MUGSHOT_CROP_LEFT_COL * zoom, cropTop * zoom, side, side, 0, 0, side, side);
-  }, [palette, repeat, zoom, cropTop, sprites]);
+    ctx.drawImage(full, left, top, sourceSide, sourceSide, 0, 0, side, side);
+  }, [palette, repeat, zoom, cropTop, roomPortrait, sprites]);
 
   return (
     <canvas

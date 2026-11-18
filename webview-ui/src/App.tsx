@@ -284,6 +284,10 @@ function App() {
   const containerRef = useRef<HTMLDivElement>(null);
   const canVisit =
     isBrowserRuntime && !officeReadOnly && !editor.isEditMode && !isDebugMode && !intro;
+  const getCardAppearance = (id: number) => {
+    const appearance = terminalDrawer.getAppearance(id);
+    return canVisit && visiting ? { ...appearance, roomPortrait: true } : appearance;
+  };
   const leaveOffice = useCallback(() => {
     setVisitorActionsOpen(false);
     officeState.leaveOffice();
@@ -884,6 +888,7 @@ function App() {
           shell={mobileShell}
           drawer={terminalDrawer}
           agentIds={cardAgents}
+          getCardAppearance={getCardAppearance}
           terminalAgentIds={terminalAgentIds}
           focusedAgentId={focusedAgentId}
           terminalAvailable={terminalAvailable}
@@ -923,7 +928,7 @@ function App() {
               agentIds={cardAgents}
               activeAgentId={terminalAvailable ? terminalDrawer.shownAgentId : null}
               focusedAgentId={focusedAgentId}
-              getAppearance={terminalDrawer.getAppearance}
+              getAppearance={getCardAppearance}
               statusFor={terminalDrawer.statusFor}
               onSelect={handleCardSelect}
               onClose={handleCloseAgent}

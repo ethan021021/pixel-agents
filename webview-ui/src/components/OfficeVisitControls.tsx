@@ -117,7 +117,7 @@ export function OfficeVisitControls({
                   onClick={() => enter(palette)}
                 >
                   <span aria-hidden="true">
-                    <CharacterMugShot palette={palette} repeat={0} />
+                    <CharacterMugShot palette={palette} repeat={0} roomPortrait />
                   </span>
                   <span className="w-full truncate text-xs">{label}</span>
                 </Button>

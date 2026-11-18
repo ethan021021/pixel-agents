@@ -26,6 +26,7 @@ interface MobileShellProps {
   drawer: TerminalDrawerController;
   /** Every top-level office agent, for the card bar. */
   agentIds: number[];
+  getCardAppearance: TerminalDrawerController['getAppearance'];
   terminalAgentIds: number[];
   focusedAgentId: number | null;
   terminalAvailable: boolean;
@@ -59,6 +60,7 @@ export function MobileShell({
   shell,
   drawer,
   agentIds,
+  getCardAppearance,
   terminalAgentIds,
   focusedAgentId,
   terminalAvailable,
@@ -157,7 +159,7 @@ export function MobileShell({
         onOpenCharacters={onOpenCharacters}
         canLaunch={terminalAvailable}
         launchUnavailableReason={terminalUnavailableReason}
-        getAppearance={drawer.getAppearance}
+        getAppearance={getCardAppearance}
         statusFor={drawer.statusFor}
       />
 

@@ -37,6 +37,7 @@ interface LoadedCharacterData {
 }
 
 let loadedCharacters: LoadedCharacterData[] | null = null;
+let roomCastIndices: readonly (number | undefined)[] = [];
 
 /**
  * A palette's sheet as its nth repeat (repeat ≥ 1) and/or mid-blink, or null to draw
@@ -56,13 +57,20 @@ let variants: VariantSource | null = null;
 export function setCharacterTemplates(
   data: LoadedCharacterData[],
   variantSource: VariantSource | null = null,
+  roomCast: readonly (number | undefined)[] = [],
 ): void {
   loadedCharacters = data;
   variants = variantSource;
+  roomCastIndices = roomCast;
   // Clear cache so sprites are rebuilt from loaded data
   spriteCache.clear();
   templatesVersion++;
   for (const listener of templateListeners) listener();
+}
+
+/** A room preset follows its profile across palette changes. */
+export function getCharacterRoomCastIndex(palette: number): number | undefined {
+  return roomCastIndices[palette];
 }
 
 /**
