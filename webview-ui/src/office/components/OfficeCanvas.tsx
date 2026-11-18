@@ -326,7 +326,7 @@ export function OfficeCanvas({
       if (room) return roomActorAt(officeState, room, zoom, pos.deviceX, pos.deviceY);
       const agentId = officeState.getCharacterAt(pos.worldX, pos.worldY);
       const petId = agentId === null ? officeState.getPetAt(pos.worldX, pos.worldY) : null;
-      return { agentId, petId, furniture: null };
+      return { agentId, petId, furniture: null, surfaceHeight: 0 };
     },
     [officeState, visiting, zoom],
   );
@@ -336,6 +336,7 @@ export function OfficeCanvas({
       pos: { deviceX: number; deviceY: number },
       tile: { col: number; row: number } | null,
       furniture: FurnitureInstance | null,
+      surfaceHeight: number,
     ) => {
       const room = roomRef.current;
       if (room && furniture) {
@@ -344,8 +345,20 @@ export function OfficeCanvas({
         const item = officeState.getLayout().furniture.find(({ uid }) => uid === furniture.uid);
         const entry = item && getCatalogEntry(item.type);
         if (item && (entry?.isDesk || entry?.category === 'electronics')) {
+          const surfacePoint =
+            entry.isDesk && surfaceHeight
+              ? room.toWorld(pos.deviceX, pos.deviceY + surfaceHeight * zoom)
+              : null;
+          const deskTile = surfacePoint
+            ? {
+                col: Math.floor(surfacePoint.x / TILE_SIZE),
+                row: Math.floor(surfacePoint.y / TILE_SIZE),
+              }
+            : tile;
           const target =
-            entry.isDesk && tile && furnitureCovers(item, tile.col, tile.row) ? tile : item;
+            entry.isDesk && deskTile && furnitureCovers(item, deskTile.col, deskTile.row)
+              ? deskTile
+              : item;
           if (officeState.getVisitorDeskAgent(target.col, target.row, deskCanOpen) !== null) {
             return { kind: 'desk', col: target.col, row: target.row } as const;
           }
@@ -365,7 +378,7 @@ export function OfficeCanvas({
       }
       return null;
     },
-    [deskCanOpen, officeState],
+    [deskCanOpen, officeState, zoom],
   );
 
   const screenToTile = useCallback(
@@ -514,10 +527,12 @@ export function OfficeCanvas({
 
       const pos = screenToWorld(e.clientX, e.clientY);
       if (!pos) return;
-      const { agentId: hitId, petId, furniture } = actorAt(pos);
+      const { agentId: hitId, petId, furniture, surfaceHeight } = actorAt(pos);
       const tile = screenToTile(e.clientX, e.clientY);
       const visitTarget =
-        visiting && hitId === null && petId === null ? visitorTargetAt(pos, tile, furniture) : null;
+        visiting && hitId === null && petId === null
+          ? visitorTargetAt(pos, tile, furniture, surfaceHeight)
+          : null;
       officeState.hoveredTile = visiting ? (visitTarget?.kind === 'floor' ? tile : null) : tile;
       const canvas = canvasRef.current;
       if (canvas) {
@@ -730,7 +745,7 @@ export function OfficeCanvas({
       const pos = screenToWorld(clientX, clientY);
       if (!pos) return;
 
-      const { agentId: hitId, petId, furniture } = actorAt(pos);
+      const { agentId: hitId, petId, furniture, surfaceHeight } = actorAt(pos);
       if (hitId !== null) {
         if (visiting) officeState.cancelVisitorArrival();
         // Dismiss any active bubble on click
@@ -767,7 +782,12 @@ export function OfficeCanvas({
           officeState.petWithVisitor(petId);
           return;
         }
-        const target = visitorTargetAt(pos, screenToTile(clientX, clientY), furniture);
+        const target = visitorTargetAt(
+          pos,
+          screenToTile(clientX, clientY),
+          furniture,
+          surfaceHeight,
+        );
         switch (target?.kind) {
           case 'seat':
             officeState.sitVisitor(target.seatId);

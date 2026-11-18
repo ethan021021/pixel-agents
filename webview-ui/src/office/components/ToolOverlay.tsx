@@ -22,6 +22,7 @@ import type { SubagentCharacter } from '../../hooks/useExtensionMessages.js';
 import { ContextBar } from '../ContextBar.js';
 import { contextLeft } from '../contextGauge.js';
 import type { OfficeState } from '../engine/officeState.js';
+import { roomCharacterHeadroom, roomCharacterPixels } from '../engine/roomCharacterFrame.js';
 import { overlayProjection } from '../projection.js';
 import { getCachedSprite } from '../sprites/spriteCache.js';
 import { BUBBLE_PERMISSION_SPRITE, BUBBLE_WAITING_SPRITE } from '../sprites/spriteData.js';
@@ -160,6 +161,9 @@ export function ToolOverlay({
         const isSub = ch.isSubagent;
         const anchor = project.toScreen(ch.x, ch.y);
         const spriteScale = zoom / dpr;
+        const sitting = ch.state === CharacterState.TYPE;
+        const sittingOffset = sitting ? CHARACTER_SITTING_OFFSET_PX : 0;
+        const roomHeadroom = angled ? roomCharacterHeadroom(roomCharacterPixels(ch)) : null;
 
         // Speech bubble (permission dots / done checkmark) — rendered here in
         // the DOM, above the label panels (OVERLAY_BUBBLE_Z_INDEX over the label panels), for every
@@ -174,14 +178,14 @@ export function ToolOverlay({
             ch.bubbleType === 'permission' ? BUBBLE_PERMISSION_SPRITE : BUBBLE_WAITING_SPRITE,
             zoom,
           );
-          const bubbleSittingOff = ch.state === CharacterState.TYPE ? BUBBLE_SITTING_OFFSET_PX : 0;
+          const bubbleSittingOff = angled ? sittingOffset : sitting ? BUBBLE_SITTING_OFFSET_PX : 0;
           const alpha =
             ch.bubbleType === 'waiting' && ch.bubbleTimer < BUBBLE_FADE_DURATION_SEC
               ? ch.bubbleTimer / BUBBLE_FADE_DURATION_SEC
               : 1;
           bubbleTop =
             anchor.y +
-            (bubbleSittingOff - BUBBLE_VERTICAL_OFFSET_PX) * spriteScale -
+            (bubbleSittingOff - (roomHeadroom ?? BUBBLE_VERTICAL_OFFSET_PX)) * spriteScale -
             (cachedBubble.height + zoom) / dpr;
           bubbleNode = (
             <div
@@ -209,9 +213,9 @@ export function ToolOverlay({
 
         // Position above character: the sprite's top edge (the tallest hair
         // reaches it), or the bubble's when one shows over the head.
-        const sittingOffset = ch.state === CharacterState.TYPE ? CHARACTER_SITTING_OFFSET_PX : 0;
         const screenX = anchor.x;
-        const screenY = anchor.y + (sittingOffset - TOOL_OVERLAY_VERTICAL_OFFSET) * spriteScale;
+        const screenY =
+          anchor.y + (sittingOffset - (roomHeadroom ?? TOOL_OVERLAY_VERTICAL_OFFSET)) * spriteScale;
         const labelBottom = Math.min(screenY, bubbleTop ?? screenY) - TOOL_OVERLAY_GAP_PX;
 
         // A "Done" agent (finished turn: waiting bubble without awaitingInput)

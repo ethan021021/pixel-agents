@@ -249,6 +249,7 @@ export const VISITOR_MARKER_TEXT = '#c6f5ff';
 
 export const ROOM_COLORS = {
   background: '#1b222f',
+  furnitureOutline: '#302a32',
   floor: [
     ['#72999d', '#7ca2a5'],
     ['#8c9982', '#94a18b'],

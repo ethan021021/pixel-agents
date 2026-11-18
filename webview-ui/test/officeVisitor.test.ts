@@ -2,9 +2,14 @@ import assert from 'node:assert/strict';
 
 import { beforeAll, test } from 'vitest';
 
-import { roomSeatAt } from '../src/office/components/roomHitTesting.js';
+import { roomActorAt, roomSeatAt } from '../src/office/components/roomHitTesting.js';
 import { OfficeState } from '../src/office/engine/officeState.js';
 import { createPet } from '../src/office/engine/petEntity.js';
+import {
+  roomFurnitureArt,
+  roomFurnitureSpriteBounds,
+} from '../src/office/engine/roomFurnitureArt.js';
+import { roomSeatingModel } from '../src/office/engine/roomSeatingModels.js';
 import type { LoadedAssetData } from '../src/office/layout/furnitureCatalog.js';
 import { buildDynamicCatalog } from '../src/office/layout/furnitureCatalog.js';
 import { roomProjection } from '../src/office/roomProjection.js';
@@ -28,6 +33,15 @@ beforeAll(() => {
     { ...furniture, id: 'VISITOR_DESK', category: 'desks', isDesk: true },
     { ...furniture, id: 'VISITOR_SHARED_DESK', category: 'desks', isDesk: true, footprintW: 3 },
     { ...furniture, id: 'VISITOR_PC', category: 'electronics', isDesk: false },
+    {
+      ...furniture,
+      id: 'DESK_FRONT',
+      category: 'desks',
+      isDesk: true,
+      footprintW: 3,
+      footprintH: 2,
+      backgroundTiles: 1,
+    },
   ];
   assert.ok(
     buildDynamicCatalog({
@@ -38,6 +52,7 @@ beforeAll(() => {
         VISITOR_DESK: [['d']],
         VISITOR_SHARED_DESK: [['d']],
         VISITOR_PC: [['p']],
+        DESK_FRONT: [['d']],
       },
     }),
   );
@@ -128,6 +143,51 @@ test('room furniture hits choose the clear seat nearest the click on a two-seat 
   assert.equal(roomSeatAt(office, furniture, room, x, y)?.uid, 'sofa:1');
   office.addAgent(8, 0, 0, 'sofa:1', true);
   assert.equal(roomSeatAt(office, furniture, room, x, y)?.uid, 'sofa');
+});
+
+test('picks the original desk from its modeled pixels and preserves custom furniture art', () => {
+  const saved = layout();
+  saved.furniture.push({ uid: 'modeled-desk', type: 'DESK_FRONT', col: 0, row: 5 });
+  const office = new OfficeState(saved);
+  const art = roomFurnitureArt(office.furniture, office.getLayout());
+  const desk = art.find(({ furniture }) => furniture.uid === 'modeled-desk');
+  const custom = art.find(({ furniture }) => furniture.uid === 'spare-chair');
+  assert.ok(desk?.model);
+  assert.ok(custom);
+  assert.equal(custom.model, undefined);
+  assert.equal(custom.pixels, custom.furniture.sprite);
+
+  const model = roomSeatingModel({
+    type: 'DESK_FRONT',
+    width: 3 * TILE_SIZE,
+    depth: 2 * TILE_SIZE,
+    backgroundRows: 1,
+    orientation: 'front',
+    surfaceHeight: 0,
+    wallAlongX: true,
+  });
+  const tabletop = model?.boxes.find(({ z, height }) => z + height === model.surfaceHeight);
+  assert.ok(tabletop);
+  const colors = new Set(desk.pixels.flat());
+  for (const color of tabletop.colors) assert.ok(colors.has(color), 'all three faces rasterize');
+
+  const zoom = 2;
+  const room = roomProjection(640, 480, saved.cols, saved.rows, zoom, 0, 0);
+  const bounds = roomFurnitureSpriteBounds(desk, room, zoom);
+  const pickPixel = (color: string) => {
+    const row = desk.pixels.findIndex((line) => line.includes(color));
+    assert.ok(row >= 0);
+    const col = desk.pixels[row].indexOf(color);
+    return roomActorAt(
+      office,
+      room,
+      zoom,
+      bounds.x + (col + 0.5) * zoom,
+      bounds.y + (row + 0.5) * zoom,
+    );
+  };
+  assert.equal(pickPixel(tabletop.colors[0]).furniture?.uid, 'modeled-desk');
+  assert.equal(pickPixel('').furniture, null);
 });
 
 test('opens only a reachable desk and rechecks its terminal on arrival', () => {

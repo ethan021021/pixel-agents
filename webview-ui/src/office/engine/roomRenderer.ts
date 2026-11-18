@@ -1,7 +1,5 @@
 import {
   BUBBLE_FADE_DURATION_SEC,
-  CHARACTER_SITTING_OFFSET_PX,
-  CHARACTER_Z_SORT_OFFSET,
   HEADLESS_CHARACTER_ALPHA,
   HOVERED_OUTLINE_ALPHA,
   ROOM_COLORS,
@@ -11,17 +9,18 @@ import {
 import { hslToRgb } from '../colorize.js';
 import { isWalkable } from '../layout/tileMap.js';
 import type { RoomPoint, RoomProjection } from '../roomProjection.js';
-import { ROOM_GROUND_SCALE, roomFurnitureBounds } from '../roomProjection.js';
+import { ROOM_GROUND_SCALE } from '../roomProjection.js';
 import { getPetSprites } from '../sprites/petSpriteData.js';
 import { getCachedSprite, getOutlineSprite } from '../sprites/spriteCache.js';
-import { BUBBLE_HEART_SPRITE, getCharacterSprites } from '../sprites/spriteData.js';
+import { BUBBLE_HEART_SPRITE } from '../sprites/spriteData.js';
 import type { ColorValue, OfficeLayout } from '../types.js';
-import { CharacterState, TILE_SIZE, TileType } from '../types.js';
-import { getCharacterSprite } from './characters.js';
+import { TILE_SIZE, TileType } from '../types.js';
 import { renderMatrixEffect } from './matrixEffect.js';
 import type { OfficeState } from './officeState.js';
 import { getPetSpriteData } from './petEntity.js';
 import { isGhostHeadlessAgentsEnabled, renderVisitorMarker } from './renderer.js';
+import { roomCharacterFrame, roomCharacterHeadroom } from './roomCharacterFrame.js';
+import { roomFurnitureArt, roomFurnitureSpriteBounds } from './roomFurnitureArt.js';
 
 const WALL_HEIGHT = 38;
 const LOW_WALL_HEIGHT = 8;
@@ -154,7 +153,7 @@ function drawGround(
   for (const draw of walls) draw();
 }
 
-/** Visitor view using the same layout and animated sprites as the flat office. */
+/** Visitor view of the office layout, with original isometric sprites. */
 export function renderRoom(
   ctx: CanvasRenderingContext2D,
   office: OfficeState,
@@ -172,13 +171,13 @@ export function renderRoom(
 
   const sprites: Array<{ depth: number; draw: () => void }> = [];
   const overlays: Array<() => void> = [];
-  for (const furniture of office.furniture) {
-    const { x, y, width, depth } = roomFurnitureBounds(furniture, projection, zoom);
-    const image = getCachedSprite(furniture.sprite, zoom);
+  for (const art of roomFurnitureArt(office.furniture, office.getLayout())) {
+    const { x, y, width, depth } = roomFurnitureSpriteBounds(art, projection, zoom);
+    const image = getCachedSprite(art.pixels, zoom);
     sprites.push({
       depth,
       draw: () => {
-        if (furniture.mirrored) {
+        if (art.mirror) {
           ctx.save();
           ctx.translate(x + width, y);
           ctx.scale(-1, 1);
@@ -189,23 +188,19 @@ export function renderRoom(
     });
   }
   for (const character of office.getCharacters()) {
-    const point = projection.toScreen(character.x, character.y);
-    const data = getCharacterSprite(
-      character,
-      getCharacterSprites(character.palette, character.repeat, character.blinkShut > 0),
-    );
+    const {
+      pixels: data,
+      foot,
+      depth,
+      x,
+      y,
+      height,
+    } = roomCharacterFrame(character, projection, zoom);
     const image = getCachedSprite(data, zoom);
-    const sitting = character.state === CharacterState.TYPE ? CHARACTER_SITTING_OFFSET_PX : 0;
-    const x = Math.round(point.x - image.width / 2);
-    const y = Math.round(point.y - image.height + sitting * zoom);
     const selected = character.id === office.selectedAgentId;
     const hovered = character.id === office.hoveredAgentId;
     const alpha =
       character.isHeadless && isGhostHeadlessAgentsEnabled() ? HEADLESS_CHARACTER_ALPHA : 1;
-    const depth = projection.toScreen(
-      character.x,
-      character.y + TILE_SIZE / 2 + CHARACTER_Z_SORT_OFFSET,
-    ).y;
     sprites.push({
       depth,
       draw: () => {
@@ -225,7 +220,8 @@ export function renderRoom(
       },
     });
     if (character.id === VISITOR_ID) {
-      overlays.push(() => renderVisitorMarker(ctx, point.x, y, zoom));
+      const head = y + height - roomCharacterHeadroom(data) * zoom;
+      overlays.push(() => renderVisitorMarker(ctx, foot.x, head, zoom));
     }
   }
   for (const pet of office.getPets()) {

@@ -1,41 +1,36 @@
-import {
-  CHARACTER_HIT_HALF_WIDTH,
-  CHARACTER_HIT_HEIGHT,
-  CHARACTER_SITTING_OFFSET_PX,
-  CHARACTER_Z_SORT_OFFSET,
-  PET_HIT_HALF_WIDTH,
-  PET_HIT_HEIGHT,
-} from '../../constants.js';
+import { PET_HIT_HALF_WIDTH, PET_HIT_HEIGHT } from '../../constants.js';
 import type { OfficeState } from '../engine/officeState.js';
+import { roomCharacterFrame } from '../engine/roomCharacterFrame.js';
+import { roomFurnitureArt, roomFurnitureSpriteBounds } from '../engine/roomFurnitureArt.js';
 import { getCatalogEntry } from '../layout/furnitureCatalog.js';
-import { roomFurnitureBounds, type RoomProjection } from '../roomProjection.js';
+import type { RoomProjection } from '../roomProjection.js';
 import type { FurnitureInstance, Seat } from '../types.js';
-import { CharacterState, TILE_SIZE } from '../types.js';
+import { TILE_SIZE } from '../types.js';
 
-/** Upright sprites are picked in screen space, like their drawn billboards. */
+/** Use the same projected sprites and depth order as the room renderer. */
 export function roomActorAt(
   office: OfficeState,
   projection: RoomProjection,
   zoom: number,
   x: number,
   y: number,
-): { agentId: number | null; petId: string | null; furniture: FurnitureInstance | null } {
+): {
+  agentId: number | null;
+  petId: string | null;
+  furniture: FurnitureInstance | null;
+  surfaceHeight: number;
+} {
   const surface = roomFurnitureAt(office, projection, zoom, x, y);
   let depth = surface?.depth ?? -Infinity;
   let agentId: number | null = null;
   let petId: string | null = null;
   for (const ch of office.characters.values()) {
     if (ch.matrixEffect === 'despawn') continue;
-    const foot = projection.toScreen(ch.x, ch.y);
-    const spriteDepth = projection.toScreen(ch.x, ch.y + TILE_SIZE / 2 + CHARACTER_Z_SORT_OFFSET).y;
-    const seatOffset = ch.state === CharacterState.TYPE ? CHARACTER_SITTING_OFFSET_PX * zoom : 0;
-    if (
-      spriteDepth >= depth &&
-      Math.abs(x - foot.x) <= CHARACTER_HIT_HALF_WIDTH * zoom &&
-      y >= foot.y + seatOffset - CHARACTER_HIT_HEIGHT * zoom &&
-      y <= foot.y + seatOffset
-    ) {
-      depth = spriteDepth;
+    const frame = roomCharacterFrame(ch, projection, zoom);
+    const col = Math.floor((x - frame.x) / zoom);
+    const row = Math.floor((y - frame.y) / zoom);
+    if (frame.depth >= depth && frame.pixels[row]?.[col]) {
+      depth = frame.depth;
       agentId = ch.id;
     }
   }
@@ -53,7 +48,12 @@ export function roomActorAt(
       petId = pet.id;
     }
   }
-  return { agentId, petId, furniture: surface?.furniture ?? null };
+  return {
+    agentId,
+    petId,
+    furniture: surface?.furniture ?? null,
+    surfaceHeight: surface?.surfaceHeight ?? 0,
+  };
 }
 
 /** A click on a furniture sprite's face can sit above its floor tile. */
@@ -63,16 +63,16 @@ function roomFurnitureAt(
   zoom: number,
   x: number,
   y: number,
-): { furniture: FurnitureInstance; depth: number } | null {
-  let hit: { furniture: FurnitureInstance; depth: number } | null = null;
-  for (const furniture of office.furniture) {
-    const bounds = roomFurnitureBounds(furniture, projection, zoom);
+): { furniture: FurnitureInstance; depth: number; surfaceHeight: number } | null {
+  let hit: ReturnType<typeof roomFurnitureAt> = null;
+  for (const art of roomFurnitureArt(office.furniture, office.getLayout())) {
+    const bounds = roomFurnitureSpriteBounds(art, projection, zoom);
     if (hit && bounds.depth < hit.depth) continue;
     const col = Math.floor((x - bounds.x) / zoom);
     const row = Math.floor((y - bounds.y) / zoom);
-    const spriteCol = furniture.mirrored ? furniture.sprite[0].length - 1 - col : col;
-    if (!furniture.sprite[row]?.[spriteCol]) continue;
-    hit = { furniture, depth: bounds.depth };
+    const spriteCol = art.mirror ? art.pixels[0].length - 1 - col : col;
+    if (!art.pixels[row]?.[spriteCol]) continue;
+    hit = { furniture: art.furniture, depth: bounds.depth, surfaceHeight: art.surfaceHeight ?? 0 };
   }
   return hit;
 }
