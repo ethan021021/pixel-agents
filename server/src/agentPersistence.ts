@@ -25,6 +25,7 @@ export function toPersistedAgent(agent: AgentState): PersistedAgent | null {
   return {
     id: agent.id,
     sessionId: agent.sessionId,
+    providerId: agent.providerId,
     terminalName: agent.terminalRef?.name ?? '',
     isExternal: agent.isExternal || undefined,
     jsonlFile: agent.jsonlFile,
@@ -54,6 +55,7 @@ export function restoredAgentInit(p: PersistedAgent): Omit<AgentStateInit, 'isEx
   return {
     id: p.id,
     sessionId: p.sessionId || path.basename(p.jsonlFile, '.jsonl'),
+    providerId: p.providerId,
     projectDir: p.projectDir,
     jsonlFile: p.jsonlFile,
     // Live spawns survive the reload so the 1 s scan can re-adopt their

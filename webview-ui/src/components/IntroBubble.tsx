@@ -57,14 +57,14 @@ interface IntroBubbleProps {
   escapeSuppressed: boolean;
 }
 
-type StepId = 'welcome' | 'claudeCode' | 'usage' | 'consent' | 'closing';
+type StepId = 'welcome' | 'supportedAgents' | 'usage' | 'consent' | 'closing';
 
 /**
  * The Intro: the first-run tour the greeter character "speaks",
  * shared by both surfaces (the VS Code webview and the standalone browser
  * render this same component off the same server message).
  *
- * Steps: welcome → Claude Code → usage bars (only where the bridge can be
+ * Steps: welcome → supported agents → usage bars (only where the bridge can be
  * installed and is not yet) → hooks consent → all set. The consent step is
  * the same first-run ask as before, now wrapped in a tour; its copy still
  * arrives from the server and its buttons still send `hooksConsentResponse`
@@ -135,7 +135,7 @@ export function IntroBubble({
   }, [offerUsage, usageBridge]);
   const steps: StepId[] = [
     'welcome',
-    'claudeCode',
+    'supportedAgents',
     ...(offerUsage ? (['usage'] as const) : []),
     'consent',
     'closing',
@@ -258,7 +258,7 @@ export function IntroBubble({
 
   const titles: Record<StepId, string> = {
     welcome: 'Welcome to Pixel Agents!',
-    claudeCode: 'Powered by Claude Code',
+    supportedAgents: 'Claude Code and Codex',
     usage: 'Track your usage',
     consent: headline,
     closing: installFailed ? "Hooks couldn't be installed" : "You're all set!",
@@ -329,11 +329,11 @@ export function IntroBubble({
           </p>
         )}
 
-        {step === 'claudeCode' && (
+        {step === 'supportedAgents' && (
           <>
             <p className="text-sm m-0 mb-8">
-              The office watches your Claude Code sessions and brings them to life in here. New to
-              Claude Code? Download it first:
+              Start Codex in a terminal or the desktop app and the office follows its activity. To
+              launch agents from the office, install Claude Code.
             </p>
             <div className="text-sm bg-btn-bg border-2 border-border py-4 px-8 mb-8 select-all">
               {CLAUDE_CODE_INSTALL_COMMAND}

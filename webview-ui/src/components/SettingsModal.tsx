@@ -211,11 +211,13 @@ export function SettingsModal({
         />
         <Checkbox
           label="Watch All Sessions"
+          title="Include Claude Code and Codex sessions outside your Directories"
           checked={watchAllSessions}
           onChange={onToggleWatchAllSessions}
         />
         <Checkbox
           label="Instant Detection (Hooks)"
+          title="Install Claude Code hooks for faster detection"
           checked={hooksInstalled}
           onChange={onToggleHooksEnabled}
         />

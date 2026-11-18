@@ -17,7 +17,8 @@ import { isPersistedSpawnChild, restoredAgentInit } from './agentPersistence.js'
 import { createAgentState } from './agentState.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import { pausedSpawnFate } from './backgroundSpawns.js';
-import { PAUSED_SPAWN_CHECK_INTERVAL_MS } from './constants.js';
+import { EXTERNAL_ACTIVE_THRESHOLD_MS, PAUSED_SPAWN_CHECK_INTERVAL_MS } from './constants.js';
+import type { HostDirectoryEntry } from './directories.js';
 import { DismissalTracker } from './dismissalTracker.js';
 import {
   adoptExternalSessionFromHook,
@@ -39,11 +40,13 @@ import {
 } from './fileWatcher.js';
 import type { HookEvent } from './hookEventHandler.js';
 import { HookEventHandler } from './hookEventHandler.js';
+import { directoryNameFor } from './hostDirectory.js';
 import { assignPaletteIfNeeded } from './paletteAssigner.js';
-import { PathSet, pathsMatch } from './pathKey.js';
+import { PathSet, pathsMatch, toPathKey } from './pathKey.js';
+import { transcriptProviderById, transcriptProviders } from './providers/index.js';
 import { SessionRouter } from './sessionRouter.js';
 import { SubagentWatch } from './subagentWatch.js';
-import { cancelPermissionTimer, cancelWaitingTimer } from './timerManager.js';
+import { cancelPermissionTimer, cancelWaitingTimer, clearAgentActivity } from './timerManager.js';
 import {
   endBackgroundSpawn,
   setBackgroundAgentCompletedCallback,
@@ -59,6 +62,23 @@ export interface RuntimeLifecycleCallbacks {
   onAgentRemoved?: (agentId: number, agent: AgentState) => void;
   /** Called when a teammate is removed. */
   onTeammateRemoved?: (teammateId: number, agent: AgentState, source: string) => void;
+}
+
+function containingDirectory(
+  cwd: string,
+  directories: HostDirectoryEntry[],
+): HostDirectoryEntry | undefined {
+  const target = toPathKey(cwd);
+  return directories.find((directory) => {
+    const relative = path.relative(directory.path, target);
+    return relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+  });
+}
+
+function sortedDirectories(directories: HostDirectoryEntry[]): HostDirectoryEntry[] {
+  return directories
+    .map((directory) => ({ ...directory, path: toPathKey(directory.path) }))
+    .sort((a, b) => b.path.length - a.path.length);
 }
 
 export class AgentRuntime {
@@ -85,6 +105,7 @@ export class AgentRuntime {
 
   // Dependencies
   readonly dismissalTracker = new DismissalTracker();
+  private readonly dismissedTranscriptSessions = new Set<string>();
   /** Shadow-store watcher for unnamed background spawns (sub-agents). */
   readonly subagentWatch: SubagentWatch;
   private hookEventHandler: HookEventHandler;
@@ -305,6 +326,7 @@ export class AgentRuntime {
 
   /** Register an agent with the hook event handler for session->agent mapping. */
   registerAgent(sessionId: string, agentId: number): void {
+    if (transcriptProviderById(this.store.get(agentId)?.providerId)) return;
     this.hookEventHandler.registerAgent(sessionId, agentId);
   }
 
@@ -401,6 +423,8 @@ export class AgentRuntime {
   closeAgent(id: number): void {
     const agent = this.store.get(id);
     if (!agent) return;
+    const provider = transcriptProviderById(agent.providerId);
+    if (provider) this.dismissedTranscriptSessions.add(`${provider.id}:${agent.sessionId}`);
     this.removeTeammates(id);
     this.subagentWatch.removeByLead(id);
     this.dismissalTracker.dismiss(agent.jsonlFile);
@@ -450,7 +474,10 @@ export class AgentRuntime {
   }
 
   /** Start external session scanning (detects sessions from other terminals). */
-  startExternalScanning(projectDir: string): void {
+  startExternalScanning(
+    projectDir: string,
+    directories: () => HostDirectoryEntry[] = () => [],
+  ): void {
     if (this.externalScanTimer) return;
 
     this.externalScanTimer = startExternalSessionScanning(
@@ -466,7 +493,87 @@ export class AgentRuntime {
       () => this.store.persist(),
       this.watchAllSessions,
       this.hooksEnabled,
+      () => this.scanTranscriptProviders(directories()),
     );
+  }
+
+  private scanTranscriptProviders(directories: HostDirectoryEntry[]): void {
+    const tracked = sortedDirectories(directories);
+    const watchAll = this.watchAllSessions.current;
+    if (!watchAll && tracked.length === 0) return;
+
+    for (const provider of transcriptProviders) {
+      const knownSessions = new Map(
+        [...this.store.values()]
+          .filter((agent) => agent.providerId === provider.id)
+          .map((agent) => [agent.sessionId, agent]),
+      );
+      for (const transcript of provider.scanTranscripts(
+        Date.now() - EXTERNAL_ACTIVE_THRESHOLD_MS,
+      )) {
+        const { sessionId, cwd, transcriptPath } = transcript;
+        if (
+          this.dismissedTranscriptSessions.has(`${provider.id}:${sessionId}`) ||
+          this.knownJsonlFiles.has(transcriptPath) ||
+          this.dismissalTracker.isDismissed(transcriptPath)
+        )
+          continue;
+        const directory = containingDirectory(cwd, tracked);
+        if (!directory && !watchAll) continue;
+
+        let agent = knownSessions.get(sessionId);
+        if (agent) {
+          // A rewritten transcript keeps its session id and leaves its old file behind.
+          this.stopWatching(agent.id);
+          this.knownJsonlFiles.delete(agent.jsonlFile);
+          agent.jsonlFile = transcriptPath;
+          agent.projectDir = cwd;
+          agent.fileOffset = 0;
+          agent.lineBuffer = '';
+          clearAgentActivity(agent, agent.id, this.store, this.permissionTimers);
+        } else {
+          agent = createAgentState({
+            id: this.store.nextAgentId.current++,
+            sessionId,
+            providerId: provider.id,
+            projectDir: cwd,
+            jsonlFile: transcriptPath,
+            isExternal: true,
+            directoryName: directory?.name ?? directoryNameFor(cwd),
+          });
+          assignPaletteIfNeeded(agent, this.store);
+          this.store.set(agent.id, agent);
+          knownSessions.set(sessionId, agent);
+        }
+        this.knownJsonlFiles.add(transcriptPath);
+        this.store.persist();
+        startFileWatching(
+          agent.id,
+          transcriptPath,
+          this.store,
+          this.fileWatchers,
+          this.pollingTimers,
+          this.waitingTimers,
+          this.permissionTimers,
+        );
+      }
+    }
+  }
+
+  setWatchAllSessions(enabled: boolean, directories: HostDirectoryEntry[]): void {
+    this.watchAllSessions.current = enabled;
+    if (enabled) return;
+
+    const tracked = sortedDirectories(directories);
+    for (const [id, agent] of this.store) {
+      if (
+        transcriptProviderById(agent.providerId) &&
+        !containingDirectory(agent.projectDir, tracked)
+      ) {
+        this.knownJsonlFiles.delete(agent.jsonlFile);
+        this.removeAgent(id);
+      }
+    }
   }
 
   /** Start stale external agent check (removes agents whose JSONL files are deleted). */
@@ -523,10 +630,7 @@ export class AgentRuntime {
    * VS Code uses its own restoreAgents() in agentManager.ts to also handle
    * terminal agents via vscode.window.terminals.
    */
-  restoreExternalAgents(): void {
-    const adapter = this.store.getAdapter();
-    if (!adapter) return;
-    const persisted = adapter.loadAgents();
+  restoreExternalAgents(persisted = this.store.loadPersistedAgents()): void {
     if (persisted.length === 0) return;
 
     let maxId = 0;

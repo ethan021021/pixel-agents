@@ -15,6 +15,8 @@
 export interface PersistedAgent {
   id: number;
   sessionId?: string;
+  /** Absent for agents saved before multiple providers were supported. */
+  providerId?: string;
   terminalName: string;
   isExternal?: boolean;
   jsonlFile: string;

@@ -47,8 +47,10 @@ import { clearContextUsage, seedContextUsage } from './contextUsage.js';
 import type { DismissalTracker } from './dismissalTracker.js';
 import { assignPaletteIfNeeded } from './paletteAssigner.js';
 import { pathsMatch } from './pathKey.js';
+import { transcriptProviderById } from './providers/index.js';
 import type { SubagentWatch } from './subagentWatch.js';
 import { cancelPermissionTimer, cancelWaitingTimer, clearAgentActivity } from './timerManager.js';
+import { applyTranscriptEvent, seedTranscriptActivity } from './transcriptActivity.js';
 import { getHookProvider, processTranscriptLine } from './transcriptParser.js';
 import type { AgentState } from './types.js';
 
@@ -113,7 +115,13 @@ export function startFileWatching(
   // Every watched agent passes through here, so this is the one place that can
   // give an agent adopted or restored mid-session a context gauge without
   // replaying its whole transcript.
-  seedContextUsage(agentId, agents, getHookProvider());
+  const agent = agents.get(agentId);
+  const transcriptProvider = transcriptProviderById(agent?.providerId);
+  if (agent && transcriptProvider) {
+    seedTranscriptActivity(agent, agents, permissionTimers, transcriptProvider);
+  } else {
+    seedContextUsage(agentId, agents, getHookProvider());
+  }
 
   // Single polling approach: reliable on all platforms (macOS, Linux, WSL2, Windows).
   // Previously used triple-redundant fs.watch + fs.watchFile + setInterval, but
@@ -137,7 +145,7 @@ export function startFileWatching(
       agent.fileOffset === prevOffset &&
       agent.terminalRef &&
       !agent.isExternal &&
-      ![...agents.values()].some((a) => a.isExternal) &&
+      ![...agents.values()].some((a) => a.isExternal && !transcriptProviderById(a.providerId)) &&
       agent.linesProcessed > 0 &&
       clearDetectionDeps.activeAgentIdRef.current === agentId &&
       Date.now() - agent.lastDataAt > CLEAR_IDLE_THRESHOLD_MS
@@ -209,23 +217,36 @@ export function readNewLines(
 ): void {
   const agent = agents.get(agentId);
   if (!agent) return;
+  const transcriptProvider = transcriptProviderById(agent.providerId);
   try {
     const stat = fs.statSync(agent.jsonlFile);
     if (stat.size <= agent.fileOffset) return;
 
-    // Cap single read at 64KB to prevent blocking on massive JSONL dumps.
-    // Remaining data will be picked up on the next poll cycle.
-    const MAX_READ_BYTES = 65536;
-    const bytesToRead = Math.min(stat.size - agent.fileOffset, MAX_READ_BYTES);
+    // Codex rollouts can include multi-megabyte compaction records. Read more
+    // per poll so the activity after them reaches the office promptly.
+    const readLimit = transcriptProvider ? 1024 * 1024 : 65536;
+    const bytesToRead = Math.min(stat.size - agent.fileOffset, readLimit);
     const buf = Buffer.alloc(bytesToRead);
     const fd = fs.openSync(agent.jsonlFile, 'r');
-    fs.readSync(fd, buf, 0, buf.length, agent.fileOffset);
-    fs.closeSync(fd);
-    agent.fileOffset += bytesToRead;
+    let bytesRead: number;
+    try {
+      bytesRead = fs.readSync(fd, buf, 0, buf.length, agent.fileOffset);
+    } finally {
+      fs.closeSync(fd);
+    }
+    agent.fileOffset += bytesRead;
 
-    const text = agent.lineBuffer + buf.toString('utf-8');
+    const text = agent.lineBuffer + buf.toString('utf-8', 0, bytesRead);
     const lines = text.split('\n');
     agent.lineBuffer = lines.pop() || '';
+
+    if (transcriptProvider) {
+      for (const line of lines) {
+        const event = transcriptProvider.parseTranscriptLine(line);
+        if (event) applyTranscriptEvent(event, agent, agents, permissionTimers, transcriptProvider);
+      }
+      return;
+    }
 
     const hasLines = lines.some((l) => l.trim());
     if (hasLines) {
@@ -1206,6 +1227,7 @@ export function startExternalSessionScanning(
   persistAgents: () => void,
   watchAllSessionsRef?: { current: boolean },
   hooksEnabledRef?: { current: boolean },
+  scanAdditionalProviders?: () => void,
 ): ReturnType<typeof setInterval> {
   return setInterval(() => {
     // Scan all tracked project dirs in both hooks and heuristic modes. Hooks are
@@ -1238,6 +1260,7 @@ export function startExternalSessionScanning(
         persistAgents,
       );
     }
+    scanAdditionalProviders?.();
   }, EXTERNAL_SCAN_INTERVAL_MS);
 }
 
@@ -1510,12 +1533,12 @@ export function startStaleExternalAgentCheck(
   hooksEnabledRef?: { current: boolean },
 ): ReturnType<typeof setInterval> {
   return setInterval(() => {
-    // When hooks are active, SessionEnd handles agent cleanup.
-    if (hooksEnabledRef?.current) return;
     const toRemove: number[] = [];
 
     for (const [id, agent] of agents) {
       if (!agent.isExternal) continue;
+      // A transcript provider doesn't have a SessionEnd hook to clean it up.
+      if (hooksEnabledRef?.current && !transcriptProviderById(agent.providerId)) continue;
 
       // Only despawn if the JSONL file has been deleted from disk.
       // Inactive external agents stay alive so they can resume when

@@ -41,7 +41,12 @@ import { getPaletteCount } from './paletteAssigner.js';
 import type { ConsentEffects } from './providers/hook/consentExecutor.js';
 import { applyConsentChoice } from './providers/hook/consentExecutor.js';
 import { hooksConsentRequest } from './providers/hook/consentGate.js';
-import { claudeProvider, hookProviderById, hookProviders } from './providers/index.js';
+import {
+  claudeProvider,
+  hookProviderById,
+  hookProviders,
+  providerCapabilities,
+} from './providers/index.js';
 import { recentCharactersMessage, recordCharacterUse } from './recentCharacters.js';
 import { launchStandaloneAgent } from './terminal/standaloneAgentLauncher.js';
 import type { TerminalSessions } from './terminal/terminalSessions.js';
@@ -359,7 +364,7 @@ export function handleClientMessage(
     case 'setWatchAllSessions': {
       const enabled = msg.enabled as boolean;
       adapter?.setSetting(KEY_WATCH_ALL_SESSIONS, enabled);
-      if (runtime) runtime.watchAllSessions.current = enabled;
+      runtime?.setWatchAllSessions(enabled, listDirectories(hostDirectoriesFor(ctx)));
       break;
     }
 
@@ -584,11 +589,7 @@ function handleWebviewReady(send: WsSend, ctx: ClientMessageContext): void {
   send({ type: 'officeAccess', readOnly: ctx.privileged !== true });
 
   // 1. Provider capabilities (must arrive before any agent messages)
-  send({
-    type: 'providerCapabilities',
-    readingTools: [...claudeProvider.readingTools],
-    subagentToolNames: [...claudeProvider.subagentToolNames],
-  });
+  send(providerCapabilities);
 
   // 1b. Terminal availability. Gates the whole terminal UI (the + Agent button
   // and the drawer), so it must land before the client can act on agents.

@@ -69,6 +69,8 @@ import {
   copyHookScript,
   hookProviderById,
   hookProviders,
+  providerCapabilities,
+  transcriptProviderById,
 } from '../../server/src/providers/index.js';
 import { recentCharactersMessage, recordCharacterUse } from '../../server/src/recentCharacters.js';
 import { PixelAgentsServer } from '../../server/src/server.js';
@@ -533,6 +535,8 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
         if (agent) {
           if (agent.terminalRef) {
             agent.terminalRef.dispose();
+          } else if (transcriptProviderById(agent.providerId)) {
+            this.runtime.closeAgent(message.id);
           } else {
             // External agent -- remove from tracking and dismiss the file
             // so the external scanner doesn't re-adopt it
@@ -640,7 +644,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
       } else if (message.type === 'setWatchAllSessions') {
         const enabled = message.enabled as boolean;
         this.adapter.setSetting(GLOBAL_KEY_WATCH_ALL_SESSIONS, enabled);
-        this.runtime.watchAllSessions.current = enabled;
+        this.runtime.setWatchAllSessions(enabled, listDirectories(this.hostDirectories()));
         if (enabled) {
           // Clear only toggle-specific dismissals so global agents can be re-adopted
           for (const file of this.globalDismissedFiles) {
@@ -658,7 +662,11 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
           }
           const toRemove: number[] = [];
           for (const [id, agent] of this.store) {
-            if (agent.isExternal && !workspaceDirs.has(agent.projectDir)) {
+            if (
+              agent.isExternal &&
+              !transcriptProviderById(agent.providerId) &&
+              !workspaceDirs.has(agent.projectDir)
+            ) {
               toRemove.push(id);
             }
           }
@@ -685,11 +693,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
         // Provider capabilities: tool taxonomy for webview animation + subagent rendering.
         // Sent once before restoreAgents so characters render with correct animations
         // from the first frame.
-        this.webview?.postMessage({
-          type: 'providerCapabilities',
-          readingTools: [...claudeProvider.readingTools],
-          subagentToolNames: [...claudeProvider.subagentToolNames],
-        });
+        this.webview?.postMessage(providerCapabilities);
 
         // Settings + Directory→Area mappings MUST be dispatched BEFORE restoreAgents
         // and the auto-spawn path. Both paths emit `agentCreated` postMessages via
@@ -872,7 +876,9 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
         this.runtime.startProjectScan(projectDir);
 
         // Start external session scanning (detects VS Code extension panel sessions)
-        this.runtime.startExternalScanning(projectDir);
+        this.runtime.startExternalScanning(projectDir, () =>
+          listDirectories(this.hostDirectories()),
+        );
 
         // In multi-root workspaces, also scan project dirs for all other folders
         // so agents running in any workspace folder are discovered

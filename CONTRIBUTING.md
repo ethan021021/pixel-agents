@@ -129,7 +129,7 @@ Agent activity comes from two sources: the hook script (`POST /api/hooks/:provid
 
 ### Adding another agent CLI
 
-Claude Code is the only provider today, and everything that knows about it lives in `server/src/providers/hook/claude/`. The integration boundary is the typed `HookProvider` interface in `core/src/provider.ts`: a new CLI is one subdirectory under `server/src/providers/hook/<id>/` (provider, installer, hook scripts, and optionally a `TeamProvider`), with no changes to the runtime or the UI. If the interface is missing something your CLI needs, open an issue or a Discussion before changing `core/`.
+Claude Code implements the `HookProvider` interface in `core/src/provider.ts`. Its installer, hook scripts, and `TeamProvider` live in `server/src/providers/hook/claude/`. Codex uses local transcripts for detection. Keep CLI-specific parsing in `server/src/providers/` and use the shared `AgentEvent` model for activity. If the interface is missing something your CLI needs, open an issue or a Discussion before changing `core/`.
 
 ### Office assets
 

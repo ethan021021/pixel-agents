@@ -33,7 +33,9 @@ import {
   TERMINAL_DISABLED_BY_FLAG_REASON,
   WILDCARD_HOSTNAMES,
 } from './constants.js';
+import { listDirectories } from './directories.js';
 import { FileStateAdapter } from './fileStateAdapter.js';
+import { hostDirectory } from './hostDirectory.js';
 import {
   claudeProvider,
   copyHookScript,
@@ -324,12 +326,15 @@ async function main(): Promise<void> {
 
     // Agents whose terminals outlived the last server (--pty-host): back in
     // the office before any browser connects.
+    const persistedAgents = store.loadPersistedAgents();
     const reattached = reattachTerminalAgents({
       store,
       runtime,
       ptyManager,
       provider: claudeProvider,
     });
+    // Restore before any discovery scanner can persist new agents over the saved list.
+    runtime.restoreExternalAgents(persistedAgents);
     if (reattached.length > 0) {
       console.log(`[Pixel Agents] Reattached ${reattached.length} running agent(s)`);
     }
@@ -491,7 +496,7 @@ async function main(): Promise<void> {
       const projectDir = dirs[0];
       console.log(`[Pixel Agents] Scanning project dir: ${projectDir}`);
       runtime.startProjectScan(projectDir);
-      runtime.startExternalScanning(projectDir);
+      runtime.startExternalScanning(projectDir, () => listDirectories([hostDirectory()]));
       runtime.startStaleCheck();
     }
 

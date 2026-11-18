@@ -1,10 +1,7 @@
 /**
  * Provider abstraction for AI agent tools.
  *
- * Only HookProvider ships today (Claude Code). Transcript-polling and push-based
- * provider types will be added when a real second provider (Codex, Goose,
- * Discord, etc.) actually lands, derived from that provider's needs rather than
- * speculation.
+ * Providers convert tool-specific activity into the events below.
  */
 
 import type { UsageWindow } from './messages.js';
@@ -24,6 +21,7 @@ export type AgentEvent =
       runInBackground?: boolean;
     }
   | { kind: 'toolEnd'; toolId: string }
+  | { kind: 'turnStart' }
   | {
       kind: 'turnEnd';
       /** True when the turn ended because the agent went idle waiting on the
@@ -225,5 +223,15 @@ export interface HookProvider {
   readonly team?: TeamProvider;
 }
 
-// TODO(provider type taxonomy): FileProvider (polling-only CLIs) and StreamProvider
-// (push-based external services) will be added alongside the first real second provider
+/** A provider that observes local transcripts without installing hooks. */
+export interface TranscriptProvider {
+  readonly id: string;
+  readonly readingTools: ReadonlySet<string>;
+  scanTranscripts(modifiedSince: number): {
+    sessionId: string;
+    cwd: string;
+    transcriptPath: string;
+  }[];
+  parseTranscriptLine(line: string): AgentEvent | null;
+  formatToolStatus(toolName: string): string;
+}

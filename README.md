@@ -27,20 +27,20 @@ It ships in two forms from the same codebase:
 - **Standalone CLI** — `npx pixel-agents` starts a local server and serves the same office as a browser app, useful for tmux, remote, and non-VS Code workflows.
 - **VS Code extension** — [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=pablodelucca.pixel-agents) and [Open VSX](https://open-vsx.org/extension/pablodelucca/pixel-agents). Agents launch into VS Code terminals; characters render in the panel area.
 
-Claude Code is supported today; Codex, Gemini, Cursor, and others are on the roadmap. Want to add support for your favourite CLI? Join our [Discord](https://discord.gg/Yk7jXebv9H) and let us know!
+Pixel Agents tracks Claude Code and Codex. You can launch Claude Code from the office and watch Codex sessions started in a terminal or the desktop app. Want to add support for your favourite CLI? Join our [Discord](https://discord.gg/Yk7jXebv9H) and let us know!
 
 ![Pixel Agents screenshot](webview-ui/public/office.png)
 
 ## Features
 
-- **One agent, one character** — every agent terminal gets its own animated character
-- **Live activity tracking** — characters animate based on what the agent is actually doing (writing, reading, running commands). Sub-agents and teammates show up as their own characters
-- **Notifications** — speech bubbles, plus optional chimes, when an agent needs input or permission or finishes its turn
+- **One agent, one character** — each tracked session gets its own animated character
+- **Live activity tracking** — characters animate based on what the agent is doing (writing, reading, running commands). Claude Code sub-agents and teammates show up as their own characters
+- **Notifications** — speech bubbles and optional chimes when an agent finishes its turn. Claude Code can also signal input and permission requests
 - **Office layout editor** — design your office with floors, walls, furniture, and named Areas; layouts are saved across windows, export as JSON, and take external asset packs
 - **Your own team** — design your agents: a wardrobe of bodies, hair, clothes and accessories, colour pickers, a pixel editor, and custom items. The pixel art is based on the amazing work of [JIK-A-4, Metro City](https://jik-a-4.itch.io/metrocity-free-topdown-character-pack).
 - **In the browser and on your phone** — the standalone office launches agents into an embedded terminal. On a phone, via Tailscale, it can become an app with the office and the terminal a swipe apart
-- **Recent conversations** — past sessions listed per Directory, resumed with one click as the character they had
-- **Usage and context bars** — health bars for your plan limits, and one on every agent for the context it has left
+- **Recent Claude Code conversations** — past sessions listed per Directory, resumed with one click as the character they had
+- **Claude Code usage and context bars** — gauges for plan limits and the context each agent has left
 - **Office radio** — procedural 8-bit background music with moods and shareable song codes
 
 <p align="center">
@@ -49,7 +49,7 @@ Claude Code is supported today; Codex, Gemini, Cursor, and others are on the roa
 
 ## Requirements
 
-- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and configured
+- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code), [Codex CLI](https://learn.chatgpt.com/docs/codex/cli), or the [desktop app](https://learn.chatgpt.com/docs/app) with Codex
 - **VS Code extension:** VS Code 1.105.0 or later
 - **Standalone CLI:** Node.js 20 or later
 - Windows, Linux, or macOS
@@ -93,6 +93,24 @@ pixel-agents --help
 ```
 
 The printed URL carries a `?token=`. Without it you can watch the office in a sort of read-only mode: no agents can be launched, terminals are not shown, and layout and settings cannot be edited. The token is kept in `~/.pixel-agents/standalone-token`, so a bookmark keeps working if you also fix `--port`. Treat the URL as a secret: whoever holds it can do all of the above.
+
+### Watch Codex sessions
+
+Open Pixel Agents in VS Code or standalone. Run `codex` in a terminal or open a local Codex session in the desktop app, then send a prompt. Pixel Agents tracks Codex in your workspace folders, the standalone start directory, and Directories you add. To include other locations, turn on **Settings → Watch All Sessions**.
+
+Keep using your terminal or the desktop app to interact with Codex. The office reads local Codex transcripts from `~/.codex/sessions` or `$CODEX_HOME/sessions` when `CODEX_HOME` is set. Codex tracking runs without installing hooks or changing your Codex settings.
+
+### Watch a remote Mac over SSH
+
+Run standalone Pixel Agents on the Mac where Codex runs, under the same user account. From the project you want to watch, run `node /path/to/pixel-agents/dist/cli.js --host 127.0.0.1 --port 3100`, using the path to your built Pixel Agents checkout. Copy the local URL it prints.
+
+On your laptop, open an SSH tunnel. Replace `user@remote-mac` with your usual SSH login and address.
+
+```bash
+ssh -N -o ExitOnForwardFailure=yes -L 127.0.0.1:3100:127.0.0.1:3100 user@remote-mac
+```
+
+Keep the tunnel open, then paste the URL into your laptop's browser. Start Codex on the remote Mac over SSH or Screen Sharing. Use **Watch All Sessions** or add a Directory if Codex is working outside the directory where Pixel Agents started.
 
 ### On your phone, via Tailscale
 
@@ -143,7 +161,7 @@ Three things get there, and they are happening in parallel, not in sequence:
 
 - **Actually a game.** Scores for whatever you care about. Furniture that _does_ things. Offices you open like save files, one per project.
 - **Expand the orchestration frontier.** Embedded orchestration. Form a team by dragging a box around them. Hand work between agents. Point them at a board and let them pick up tasks themselves.
-- **Everywhere, with everything.** Today it's Claude Code in VS Code or the browser. It should be whatever agent you run, wherever you work. A new CLI is a subdirectory, not a rewrite — this is where help is most useful right now.
+- **Everywhere, with everything.** Today you can see Claude Code and Codex agents in VS Code or the browser. It should be whatever agent you run, wherever you work. A new CLI is a subdirectory, not a rewrite — this is where help is most useful right now.
 
 Most of this is still ahead. See [Issues](https://github.com/pixel-agents-hq/pixel-agents/issues) and [Discussions](https://github.com/pixel-agents-hq/pixel-agents/discussions) for what's open, and [CONTRIBUTING.md](CONTRIBUTING.md) to jump in.
 
@@ -163,7 +181,8 @@ To build from source, run the tests, or add support for another agent CLI, see [
 ## Troubleshooting
 
 - **Standalone will not start:** verify Node.js 20+, omit `--port` to choose a free port, or select another fixed port.
-- **An agent is missing:** confirm **Settings → Instant Detection (Hooks)** is on and that the session belongs to the current workspace. Enable **Watch All Sessions** if needed.
+- **A Claude Code agent is missing:** confirm **Settings → Instant Detection (Hooks)** is on and that the session belongs to the current workspace. Enable **Watch All Sessions** if needed.
+- **A Codex agent is missing:** send a prompt in a local Codex session and check that its working directory is tracked, or enable **Settings → Watch All Sessions**.
 - **The UI looks disconnected:** open **Settings → Debug View** to inspect the server connection, transcript path, and latest agent data.
 - **Extension and standalone are both running:** this is supported. Current versions create separate files under `~/.pixel-agents/servers/`; stopping one does not remove the other.
 

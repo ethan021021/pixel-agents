@@ -25,7 +25,7 @@ import {
 import { loadLayout } from '../../server/src/layoutPersistence.js';
 import { assignPaletteIfNeeded } from '../../server/src/paletteAssigner.js';
 import { CLAUDE_TERMINAL_NAME_PREFIX } from '../../server/src/providers/hook/claude/constants.js';
-import { claudeProvider } from '../../server/src/providers/index.js';
+import { claudeProvider, transcriptProviderById } from '../../server/src/providers/index.js';
 import { sessionMarkersUnset } from '../../server/src/terminal/terminalEnv.js';
 import { cancelPermissionTimer, cancelWaitingTimer } from '../../server/src/timerManager.js';
 import { workspaceDirectories } from './hostDirectories.js';
@@ -387,7 +387,7 @@ export function restoreAgents(
       if (idx > maxIdx) maxIdx = idx;
     }
 
-    restoredProjectDir = p.projectDir;
+    if (!transcriptProviderById(agent.providerId)) restoredProjectDir = p.projectDir;
 
     // Start file watching if JSONL exists, skipping to end of file
     try {

@@ -2,6 +2,8 @@
 export const JSONL_POLL_INTERVAL_MS = 1000;
 export const FILE_WATCHER_POLL_INTERVAL_MS = 500;
 export const PROJECT_SCAN_INTERVAL_MS = 1000;
+/** Bound the history read on adoption, allowing for large tool output records. */
+export const TRANSCRIPT_ACTIVITY_SEED_BYTES = 4 * 1024 * 1024;
 
 // ── Heuristic Agent Status Detection ────────────────────────
 // These timers are the fallback when CLI hooks are not active
