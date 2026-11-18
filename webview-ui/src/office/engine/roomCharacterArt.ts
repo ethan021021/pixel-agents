@@ -31,12 +31,12 @@ const FACE = [
   ' oSSSSSSo   ',
   'oSSSSSSSSo  ',
   'oSSSSSSSSSo ',
-  'osSSSSSSSSo ',
-  'osSSSSSESEo',
-  'oAsSSSSeSSo',
+  'osSSSSSbSbo ',
+  'oAsSSSSbSeo ',
+  'oAsSSSSESSo ',
   ' oAsSSSSSSHo',
-  ' oAsSSSShSo ',
-  '  oAsSSmSo  ',
+  ' oAAsSSShSo ',
+  '  oAAsmmSo  ',
   '   ooAAoo   ',
 ];
 const BACK_HEAD = [
@@ -53,41 +53,41 @@ const BACK_HEAD = [
   '      oo    ',
 ];
 const COAT = [
-  '    oAAo    ',
-  '  ooCcco    ',
-  ' ooCCqqco   ',
-  ' oCCCTqqoo  ',
-  'oCCCTTqcco  ',
-  'oCCCTTqco   ',
-  'oCCCTTqco   ',
-  'oCCCTTqco   ',
-  ' oCCTTqco   ',
-  ' oCCCCqoo   ',
-  '  oooooo    ',
+  '    oAAo     ',
+  '  ooCCcoo    ',
+  ' ooCCCqqco   ',
+  ' oCCCTTqqco  ',
+  'oCCCCTTqcco  ',
+  'oCCCCTTqcco  ',
+  'oCCCCTTqcco  ',
+  'oCCCCTTqco   ',
+  ' oCCCTTqco   ',
+  ' ooCCCTqoo   ',
+  '   oooooo    ',
 ];
-const SLEEVE = [' ooo ', 'oCCCo', 'oCCco', 'oCCco', 'oCcco', ' oco ', ' oAo ', ' oSo ', '  o  '];
+const SLEEVE = [' ooo ', 'oCqCo', 'oCCco', 'oCCco', 'oCcco', ' oUo ', ' oAo ', ' oSo ', '  o  '];
 const LAP_SLEEVE = [
   ' ooo     ',
-  'oCCCo    ',
+  'oCqCo    ',
   'oCCco    ',
   'oCCco    ',
   ' oCcco   ',
   '  oCCco  ',
-  '   ooASo ',
+  '   oUASo ',
   '     ooo ',
 ];
 const WAVING_SLEEVE = [
-  [' oo    ', 'oSSo   ', 'oSSAo  ', ' oAAo  ', '  oCo  ', '  oCCoo', '   oCCo', '    ooo'],
-  ['oo     ', 'oSo    ', ' oSAo  ', '  oAo  ', '  oCCo ', '   oCoo', '   oCCo', '    ooo'],
+  [' oo    ', 'oSHo   ', 'oSSAo  ', ' oAAo  ', '  oUo  ', '  oCCoo', '   oCCo', '    ooo'],
+  ['oo     ', 'oHo    ', ' oSAo  ', '  oAo  ', '  oUCo ', '   oCoo', '   oCCo', '    ooo'],
 ] as const;
-const TROUSER = [' oPPo ', 'oPPPo ', 'oPPpo ', 'oPPpo ', 'oPPpo ', 'oPPpo ', ' oPpo '];
+const TROUSER = [' oPPo ', 'oPKPo ', 'oPPpo ', 'oPKpo ', 'oPPpo ', 'oPPpo ', ' oPpo '];
 const SKIRT = ['  oPPPPo  ', ' oPPPPPPo ', ' oPPPPpPo ', 'oPPPPpPPPo', 'ooPPpPPooo', '  oooooo  '];
-const SHOE = [' oo   ', 'oDDoo ', 'oDdDDo', ' oooo '];
+const SHOE = [' oo   ', 'oDLoo ', 'oDdLDo', ' oOOo '];
 const BENT_FAR = [
   ' oPPo     ',
   'oPPPPoo   ',
   'oPPPPPpo  ',
-  ' oPPPPpo  ',
+  ' oPPKPpo  ',
   '  ooPPpo  ',
   '    oPpo  ',
   '    oPpo  ',
@@ -97,7 +97,7 @@ const BENT_NEAR = [
   'oooo     ',
   'oPPPoo   ',
   'oPPPPPoo ',
-  'oPPPPPpo ',
+  'oPPKPPpo ',
   ' oPPPpPo ',
   '  ooPpPo ',
   '    oPpo ',
@@ -108,11 +108,11 @@ const BENT_NEAR = [
 // In the rear view, knees project away from the viewer above the hip line.
 // The soles stay close to the cushion so they tuck behind the chair's back.
 const RECEDING_LEG = ['    opo ', '  ooppo ', ' oPPppo ', 'oPPPpo  ', ' oooo   '];
-const RECEDING_SHOE = [' oo ', 'oDdo', ' ooo'];
+const RECEDING_SHOE = [' oo ', 'oDdo', ' oOo'];
 
-function shade(pixel: string, amount: number): string {
+function shade(pixel: string, amount: number, lift = 0): string {
   const channel = (at: number) =>
-    Math.min(255, Math.round(parseInt(pixel.slice(at, at + 2), 16) * amount));
+    Math.min(255, Math.round(parseInt(pixel.slice(at, at + 2), 16) * amount + lift));
   const alpha = pixel.length === 9 ? parseInt(pixel.slice(7), 16) : 255;
   return rgbaToHex(channel(1), channel(3), channel(5), alpha);
 }
@@ -218,21 +218,26 @@ export function roomCharacterSprite(
   const colors: Record<string, string> = {
     o: ink,
     S: skin,
-    A: shade(skin, 0.83),
-    s: shade(skin, 0.91),
-    H: shade(skin, 1.2),
-    h: back ? hair : shade(skin, 1.12),
+    A: shade(skin, 0.76),
+    s: shade(skin, 0.89),
+    H: shade(skin, 1.18, 3),
+    h: back ? hair : shade(skin, 1.09, 5),
+    b: shade(skin, 0.63),
     E: blink ? shade(skin, 0.47) : iris,
     e: blink ? skin : shade(iris, 0.87),
-    m: shade(skin, 0.62),
+    m: shade(skin, 0.66),
     C: shirt,
     c: shade(shirt, 0.72),
-    q: shade(shirt, 1.15),
+    q: shade(shirt, 1.13, 9),
+    U: shade(shirt, 1.14, 15),
     T: shirt,
     P: trousers,
     p: shade(trousers, 0.7),
-    D: shade(shoes, 1.2),
+    K: shade(trousers, 1.11, 9),
+    D: shade(shoes, 1.11, 6),
     d: shade(shoes, 0.8),
+    L: shade(shoes, 1.19, 12),
+    O: shade(shoes, 0.49, 6),
   };
   const art: SpriteData = Array.from(
     { length: sitting ? ROOM_SEATED_FRAME_HEIGHT : STANDING_H },
@@ -249,8 +254,14 @@ export function roomCharacterSprite(
   };
   const hem = front[28].filter(Boolean).length;
   const skirt = hem >= 10 && hem > front[29].filter(Boolean).length;
-  const legs = skirt ? { ...colors, P: skin, p: colors.A } : colors;
-  const farCloth = { ...legs, P: shade(legs.P, 0.79), D: shade(shoes, 0.82) };
+  const legs = skirt ? { ...colors, P: skin, p: colors.A, K: shade(skin, 1.08, 5) } : colors;
+  const farCloth = {
+    ...legs,
+    P: shade(legs.P, 0.79),
+    K: shade(legs.K, 0.79),
+    D: shade(shoes, 0.82, 6),
+    L: shade(shoes, 0.96, 8),
+  };
 
   if (sitting && back) {
     paint(RECEDING_LEG, 8, 21, farCloth);

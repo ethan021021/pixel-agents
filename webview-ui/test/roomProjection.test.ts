@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { roomFurnitureBounds, roomProjection } from '../src/office/roomProjection.js';
-import { TILE_SIZE } from '../src/office/types.js';
+import { roomEntryPan, roomFurnitureBounds, roomProjection } from '../src/office/roomProjection.js';
+import { TILE_SIZE, TileType } from '../src/office/types.js';
 
 describe('angled office projection', () => {
   it('maps a floor tile to a 2:1 diamond and round-trips continuous points', () => {
@@ -46,5 +46,33 @@ describe('angled office projection', () => {
       height: 2,
       depth: projection.toScreen(17, 42).y,
     });
+  });
+
+  it('frames the occupied room at entry and follows the visitor when it cannot fit', () => {
+    const layout = {
+      cols: 4,
+      rows: 3,
+      tiles: [
+        TileType.VOID,
+        TileType.WALL,
+        TileType.WALL,
+        TileType.VOID,
+        TileType.VOID,
+        TileType.FLOOR_1,
+        TileType.FLOOR_1,
+        TileType.VOID,
+        TileType.VOID,
+        TileType.VOID,
+        TileType.VOID,
+        TileType.VOID,
+      ],
+    };
+    const visitor = { x: 2.5 * TILE_SIZE, y: 1.5 * TILE_SIZE };
+    const base = roomProjection(0, 0, layout.cols, layout.rows, 2, 0, 0);
+    const fit = roomEntryPan(layout, 2, 1000, 800, visitor);
+    const top = base.toScreen(TILE_SIZE, 0);
+    const bottom = base.toScreen(3 * TILE_SIZE, 2 * TILE_SIZE);
+    expect(fit).toEqual({ x: -(top.x + bottom.x) / 2, y: 40 - (top.y + bottom.y) / 2 });
+    expect(roomEntryPan(layout, 2, 10, 10, visitor)).toEqual(base.focusPan(visitor.x, visitor.y));
   });
 });

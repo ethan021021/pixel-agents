@@ -49,7 +49,7 @@ import { exportLayoutToFile } from './office/layout/exportLayout.js';
 import { isRotatable } from './office/layout/furnitureCatalog.js';
 import { migrateLayoutColors } from './office/layout/layoutSerializer.js';
 import { overlayProjection } from './office/projection.js';
-import { roomProjection } from './office/roomProjection.js';
+import { roomEntryPan } from './office/roomProjection.js';
 import { getPetCount } from './office/sprites/petSpriteData.js';
 import { EditTool, type OfficeLayout, TILE_SIZE } from './office/types.js';
 import { isBrowserRuntime, isE2E } from './runtime.js';
@@ -281,6 +281,7 @@ function App() {
     onClose: handleIntroClose,
   } = useIntroTour({ consentRequest, hooksInstalled, hooksStatusSeq, dismissConsentRequest });
 
+  const containerRef = useRef<HTMLDivElement>(null);
   const canVisit =
     isBrowserRuntime && !officeReadOnly && !editor.isEditMode && !isDebugMode && !intro;
   const leaveOffice = useCallback(() => {
@@ -294,10 +295,14 @@ function App() {
       setVisitorActionsOpen(false);
       panBeforeVisit.current = editor.panRef.current;
       officeState.breakCameraFollow();
-      const { cols, rows } = officeState.getLayout();
-      editor.panRef.current = roomProjection(0, 0, cols, rows, editor.zoom, 0, 0).focusPan(
-        officeState.visitor.x,
-        officeState.visitor.y,
+      const area = containerRef.current?.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      editor.panRef.current = roomEntryPan(
+        officeState.getLayout(),
+        editor.zoom,
+        ((area?.width ?? 0) - 40) * dpr,
+        ((area?.height ?? 0) - 192) * dpr,
+        officeState.visitor,
       );
       return true;
     },
@@ -401,7 +406,6 @@ function App() {
     visiting,
   ]);
 
-  const containerRef = useRef<HTMLDivElement>(null);
   const waveVisitor = useCallback(() => {
     if (!canVisit || !officeState.visitor) return;
     officeState.waveVisitor();
@@ -657,11 +661,12 @@ function App() {
             </div>
           )}
 
-          {/* Vignette overlay */}
-          <div
-            className="absolute inset-0 pointer-events-none"
-            style={{ background: 'var(--vignette)' }}
-          />
+          {!visiting && (
+            <div
+              className="absolute inset-0 pointer-events-none"
+              style={{ background: 'var(--vignette)' }}
+            />
+          )}
 
           {editor.isEditMode && editor.isDirty && (
             <EditActionBar editor={editor} editorState={editorState} />

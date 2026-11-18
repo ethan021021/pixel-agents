@@ -55,6 +55,19 @@ describe('room character art', () => {
     );
   });
 
+  it('keeps the configured iris ink within the face and blinks without changing the silhouette', () => {
+    const source = wardrobe();
+    const iris = rgbaToHex(51, 38, 88, 255);
+    source[14][7] = iris;
+
+    const open = roomCharacterSprite(source, Direction.RIGHT, false);
+    const closed = roomCharacterSprite(source, Direction.RIGHT, false, { blink: true });
+
+    expect(open[14][9]).toBe(iris);
+    expect(closed[14][9]).not.toBe(iris);
+    expect(closed.map((row) => row.map(Boolean))).toEqual(open.map((row) => row.map(Boolean)));
+  });
+
   it('bends the legs from the seat and keeps the hip and shoe placement during gestures', () => {
     const standing = wardrobe();
     const frame = empty();

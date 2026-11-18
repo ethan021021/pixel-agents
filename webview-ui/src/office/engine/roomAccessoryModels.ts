@@ -7,16 +7,22 @@ const solid = (color: string): Faces => [color, color, color];
 /* eslint-disable pixel-agents/no-inline-colors -- Original palette data for the accessory models. */
 const ink = {
   walnut: ['#a37044', '#583825', '#744a2e'],
-  walnutEdge: ['#ca9760', '#815436', '#a36b43'],
-  caseInterior: ['#68452e', '#39291f', '#503226'],
+  walnutEdge: ['#e3a16c', '#88543c', '#b1764e'],
+  caseInterior: ['#372c38', '#211e2a', '#2d2632'],
   brass: ['#f4ce80', '#987247', '#c19a59'],
   bezel: ['#e7d6b2', '#938163', '#b6a487'],
   shell: ['#f3e3bf', '#9c8969', '#c7b393'],
-  housing: ['#c7b695', '#827254', '#a29072'],
-  keys: ['#867759', '#5a4b36', '#6f6048'],
+  petrol: ['#47777b', '#243e4e', '#365861'],
+  petrolEdge: ['#619690', '#3b6268', '#527c7e'],
+  keys: ['#505a5c', '#303c43', '#404b50'],
+  keycaps: ['#d4ccb0', '#777568', '#a49d86'],
   cup: ['#eee3c6', '#918a70', '#bcaf92'],
   clay: ['#ba805b', '#783f32', '#9c5740'],
+  clayFoot: ['#935c4a', '#644034', '#7c4d3e'],
   clayEdge: ['#df9d70', '#915441', '#be7052'],
+  jade: ['#55948a', '#2e5359', '#42716f'],
+  jadeFoot: ['#467472', '#2b434c', '#3c5c62'],
+  jadeEdge: ['#93b6a0', '#466b68', '#67938a'],
   leafDark: ['#54895c', '#203d36', '#2f6048'],
   leaf: ['#75a667', '#315d43', '#4c8554'],
   leafLight: ['#a7bb6a', '#547344', '#6d9956'],
@@ -26,6 +32,7 @@ const ink = {
   screenOff: solid('#263331'),
   screenGlass: solid('#435855'),
   screenOn: solid('#20473d'),
+  screenTrim: solid('#21323a'),
   phosphor: solid('#8dde8e'),
   signal: solid('#d6b46b'),
   soil: solid('#3d3029'),
@@ -44,11 +51,11 @@ const ink = {
 } as const satisfies Record<string, Faces>;
 
 const bookColors: Faces[] = [
-  ['#c78360', '#6a4540', '#986251'],
-  ['#87a286', '#425a50', '#617d6b'],
-  ['#cfb778', '#776443', '#a28b55'],
-  ['#7c929d', '#455665', '#627584'],
-  ['#a795ae', '#5e4b63', '#806e87'],
+  ['#dd7963', '#783a3b', '#aa544e'],
+  ['#62ab9f', '#345d60', '#46837e'],
+  ['#ecc181', '#886247', '#bb915f'],
+  ['#758db5', '#45516d', '#5b7191'],
+  ['#b794ba', '#634867', '#8b678c'],
 ];
 /* eslint-enable pixel-agents/no-inline-colors */
 
@@ -69,14 +76,17 @@ function computer(input: RoomModelInput): RoomModel {
   const lit = input.type.includes('_ON_');
   const cursor = input.type.endsWith('_2') ? 1.2 : input.type.endsWith('_3') ? 2.4 : 0;
   const pieces = [
-    box(-5.5, -6, 0, 11, 9, 1.5, ink.housing),
-    box(-5, -6.5, 1.5, 10.5, 8.5, 9.5, ink.bezel),
-    box(-6.5, -1.5, 1.5, 13, 5, 12.5, ink.shell),
-    box(6.5, -0.75, 9.5, 0.25, 3, 0.55, ink.keys),
-    box(6.5, -0.75, 8.4, 0.25, 3, 0.55, ink.keys),
-    box(-5.15, 3.5, 4.35, 10.3, 0.54, 7.9, ink.housing),
-    box(-4.35, 4.04, 5.1, 8.7, 0.4, 6.45, lit ? ink.screenOn : ink.screenOff),
-    box(-3.8, 4.44, 10.1, 7.5, 0.2, 0.65, ink.screenGlass),
+    box(-5.5, -6, 0, 11, 9, 1.5, ink.keys),
+    box(-5, -6.5, 1.5, 10.5, 8.5, 9.5, ink.petrol),
+    box(-6.5, -1.5, 1.5, 13, 4, 11.5, ink.petrol),
+    box(-5.7, -1.15, 13, 11.4, 4.65, 1, ink.petrolEdge),
+    box(-6.5, 1.1, 1.5, 13, 2.4, 11.5, ink.shell),
+    box(6.5, -0.75, 9.5, 0.25, 1.75, 0.55, ink.keys),
+    box(6.5, -0.75, 8.4, 0.25, 1.75, 0.55, ink.keys),
+    box(-5.35, 3.5, 4.05, 10.7, 0.54, 8.1, ink.bezel),
+    box(-4.8, 4.04, 4.7, 9.6, 0.25, 6.85, ink.screenTrim),
+    box(-4.15, 4.29, 5.3, 8.3, 0.15, 5.65, lit ? ink.screenOn : ink.screenOff),
+    box(-3.55, 4.44, 10.35, 7.1, 0.2, 0.55, ink.screenGlass),
     box(3.9, 3.55, 2.55, 1.2, 0.45, 0.6, lit ? ink.phosphor : ink.signal),
     box(-4.4, 3.55, 2.35, 3.8, 0.45, 0.55, ink.keys),
     ...(lit
@@ -86,10 +96,10 @@ function computer(input: RoomModelInput): RoomModel {
           box(-3.5 + cursor, 4.44, 6.3, 1.1, 0.25, 0.56, ink.phosphor),
         ]
       : []),
-    box(-6.1, 5.9, 0, 11.35, 4.4, 0.95, ink.bezel),
-    box(-5.55, 6.55, 0.95, 6.7, 2.35, 0.35, ink.keys),
-    box(1.95, 6.55, 0.95, 2.55, 2.35, 0.35, ink.keys),
-    box(-4.1, 9.18, 0.95, 4.4, 0.55, 0.35, ink.keys),
+    box(-6.1, 5.9, 0, 11.35, 4.4, 0.95, ink.petrol),
+    box(-5.55, 6.55, 0.95, 6.7, 1.8, 0.35, ink.keycaps),
+    box(1.95, 6.55, 0.95, 2.55, 2.35, 0.35, ink.keycaps),
+    box(-4.1, 9.18, 0.95, 4.4, 0.55, 0.35, ink.keycaps),
     box(6.15, 6.5, 0, 2.25, 3.4, 1.15, ink.shell),
   ];
   const cx = input.width / 2;
@@ -115,11 +125,26 @@ function computer(input: RoomModelInput): RoomModel {
   };
 }
 
-function planter(x: number, y: number, z: number, size: number): RoomBox[] {
+function planter(x: number, y: number, z: number, size: number, glazed = false): RoomBox[] {
+  const body = glazed ? ink.jade : ink.clay;
+  const rim = glazed ? ink.jadeEdge : ink.clayEdge;
+  const inset = (gap: number, heightFromBase: number, height: number, colors: Faces) =>
+    box(
+      x - size / 2 + gap,
+      y - size / 2 + gap,
+      z + heightFromBase,
+      size - 2 * gap,
+      size - 2 * gap,
+      height,
+      colors,
+    );
   return [
-    box(x - size / 2 + 0.75, y - size / 2 + 0.75, z, size - 1.5, size - 1.5, 4.5, ink.clay),
-    box(x - size / 2, y - size / 2, z + 4.5, size, size, 1.35, ink.clayEdge),
-    box(x - size / 2 + 1.15, y - size / 2 + 1.15, z + 5.86, size - 2.3, size - 2.3, 0.18, ink.soil),
+    inset(0.75, 0, 1.1, glazed ? ink.jadeFoot : ink.clayFoot),
+    inset(1, 1.1, 1.1, body),
+    inset(0.75, 2.2, 2.3, body),
+    inset(0.7, 2.8, 0.55, rim),
+    inset(0, 4.5, 1.35, rim),
+    inset(1.15, 5.86, 0.18, ink.soil),
   ];
 }
 
@@ -152,7 +177,13 @@ function floorPlant(input: RoomModelInput): RoomModel {
   const y = input.depth - TILE_SIZE / 2;
   const z = input.surfaceHeight;
   const large = input.type === 'LARGE_PLANT';
-  const boxes = planter(x, y, z, large ? 12 : 8);
+  const boxes = planter(
+    x,
+    y,
+    z,
+    large ? 12 : 8,
+    input.type === 'PLANT_2' || input.type === 'CACTUS',
+  );
   if (input.type === 'POT') return { boxes };
   if (input.type === 'CACTUS') {
     boxes.push(
@@ -193,7 +224,7 @@ function hangingPlant(input: RoomModelInput): RoomModel {
     box(center - 0.35, 2, 26, 0.7, 0.7, 9, ink.rope),
     box(center - 2.35, 4.9, 20, 0.65, 0.65, 7.5, ink.rope),
     box(center + 2, 4.9, 20, 0.65, 0.65, 7.5, ink.rope),
-    ...planter(center, 5.5, 15, 7.2),
+    ...planter(center, 5.5, 15, 7.2, true),
     ...foliage(center, 5.5, 20, 0.7),
     box(center - 4.2, 7.5, 15.6, 1.65, 1.9, 5.3, ink.leaf),
     box(center + 3.2, 7.9, 13.3, 1.35, 1.9, 5.9, ink.leafDark),
@@ -204,33 +235,45 @@ function bookshelf(input: RoomModelInput): RoomModel {
   const width = input.width - 4;
   const levels = input.type === 'DOUBLE_BOOKSHELF' ? 2 : 1;
   const base = levels === 2 ? 12 : 19;
-  const boxes = [box(2, 0.5, base, width, 2, 2 + levels * 10, ink.caseInterior)];
+  const boxes = [box(2, 0.5, base, width, 2.6, 2 + levels * 10, ink.caseInterior)];
   for (let level = 0; level < levels; level++) {
     const z = base + level * 10;
-    boxes.push(box(2, 0.5, z, width, 6, 1.7, ink.walnutEdge));
-    for (let spine = 0; spine < Math.floor((width - 6) / 3); spine++) {
-      const x = 4.2 + spine * 3;
-      const height = 4.6 + ((spine * 3 + level) % 4);
+    const spines = Math.floor((width - 11) / 3);
+    boxes.push(
+      box(2, 0.5, z, width, 6, 1.7, ink.walnut),
+      box(2, 6.5, z + 0.6, width, 0.13, 1.1, ink.walnutEdge),
+    );
+    for (let spine = 0; spine < spines; spine++) {
+      const x = 4.2 + spine * 3 + level * 3.7;
+      const height = 4.1 + ((spine * 3 + level) % 4);
       boxes.push(
         box(
           x,
-          2.2,
+          3.1,
           z + 1.7,
-          2.55,
-          3.75,
+          spine % 3 === 1 ? 2.65 : 2.05,
+          2.85,
           height,
           bookColors[(spine + 2 * level) % bookColors.length],
         ),
       );
       if (spine % 3 !== 1) {
-        boxes.push(box(x + 0.3, 5.96, z + 3, 1.9, 0.18, 0.55, ink.paper));
+        boxes.push(box(x + 0.3, 5.95, z + 3, 1.45, 0.18, 0.55, ink.paper));
       }
+    }
+    if (spines > 2) {
+      const x = level === 0 ? width - 4.3 : 4.1;
+      boxes.push(
+        box(x, 3.3, z + 1.7, 5, 2.9, 1.5, bookColors[2]),
+        box(x + 0.4, 3.4, z + 3.2, 4.2, 2.65, 1.4, bookColors[0]),
+      );
     }
   }
   boxes.push(
     box(1.5, 0.5, base, 1.7, 6.15, 2 + levels * 10, ink.walnut),
     box(input.width - 3.2, 0.5, base, 1.7, 6.15, 2 + levels * 10, ink.walnut),
     box(1.4, 0.5, base + levels * 10, width + 1.2, 6.2, 1.85, ink.walnutEdge),
+    box(2.05, 6.36, base + levels * 10 - 0.45, width - 0.1, 0.28, 0.63, ink.brass),
   );
   return wallModel(input, boxes);
 }

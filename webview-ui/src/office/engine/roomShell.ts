@@ -1,14 +1,16 @@
 import { ROOM_COLORS } from '../../constants.js';
 import { hslToRgb } from '../colorize.js';
 import type { RoomPoint, RoomProjection } from '../roomProjection.js';
-import { ROOM_GROUND_SCALE } from '../roomProjection.js';
+import {
+  ROOM_GROUND_SCALE,
+  ROOM_PLATFORM_DEPTH as PLATFORM_DEPTH,
+  ROOM_WALL_HEIGHT as WALL_HEIGHT,
+} from '../roomProjection.js';
 import type { ColorValue, OfficeLayout } from '../types.js';
 import { TILE_SIZE, TileType } from '../types.js';
 import { furnitureCovers } from './visitorNavigation.js';
 
-const WALL_HEIGHT = 42;
-const LOW_WALL_HEIGHT = 8;
-const PLATFORM_DEPTH = 4;
+const LOW_WALL_HEIGHT = 5;
 const HALF_WIDTH = TILE_SIZE * ROOM_GROUND_SCALE;
 const HALF_HEIGHT = HALF_WIDTH / 2;
 
@@ -36,12 +38,39 @@ export function roomPolygon(
   ctx.fill();
 }
 
+/** Draw the cached room on its native pixel grid. Canvas paths would blend
+ * the edge palette before it was enlarged to game scale. */
+function pixelFace(ctx: CanvasRenderingContext2D, points: RoomPoint[], color: string): void {
+  const top = Math.ceil(Math.min(...points.map(({ y }) => y)) - 0.5);
+  const bottom = Math.ceil(Math.max(...points.map(({ y }) => y)) - 0.5);
+  ctx.fillStyle = color;
+  for (let y = top; y < bottom; y++) {
+    const sample = y + 0.5;
+    let left = Infinity;
+    let right = -Infinity;
+    for (let i = 0; i < points.length; i++) {
+      const a = points[i];
+      const b = points[(i + 1) % points.length];
+      if (a.y > sample === b.y > sample) continue;
+      const x = a.x + ((sample - a.y) / (b.y - a.y)) * (b.x - a.x);
+      left = Math.min(left, x);
+      right = Math.max(right, x);
+    }
+    if (left < right) {
+      const start = Math.ceil(left - 0.5);
+      const end = Math.ceil(right - 0.5);
+      ctx.fillRect(start, y, end - start, 1);
+    }
+  }
+}
+
 function line(ctx: CanvasRenderingContext2D, a: RoomPoint, b: RoomPoint, color: string): void {
-  ctx.beginPath();
-  ctx.moveTo(a.x, a.y);
-  ctx.lineTo(b.x, b.y);
-  ctx.strokeStyle = color;
-  ctx.stroke();
+  const steps = Math.max(1, Math.ceil(Math.max(Math.abs(b.x - a.x), Math.abs(b.y - a.y))));
+  ctx.fillStyle = color;
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    ctx.fillRect(Math.round(a.x + (b.x - a.x) * t), Math.round(a.y + (b.y - a.y) * t), 1, 1);
+  }
 }
 
 function floorPoint(top: RoomPoint, x: number, y: number, zoom = 1): RoomPoint {
@@ -76,7 +105,7 @@ function wallBand(
   top: number,
   color: string,
 ): void {
-  roomPolygon(
+  pixelFace(
     ctx,
     [
       along(wall, start, base),
@@ -101,39 +130,39 @@ function paintWall(ctx: CanvasRenderingContext2D, wall: Wall): void {
 
 function paintDoor(ctx: CanvasRenderingContext2D, wall: Wall): void {
   const { entry } = ROOM_COLORS;
-  roomPolygon(
+  pixelFace(
     ctx,
     [
-      along(wall, 0.16, 0),
-      along(wall, 1.84, 0),
-      along(wall, 1.84, 27),
-      along(wall, 1.55, 33),
-      along(wall, 0.45, 33),
-      along(wall, 0.16, 27),
+      along(wall, 0.3, 0),
+      along(wall, 1.7, 0),
+      along(wall, 1.7, 28),
+      along(wall, 1.5, 33),
+      along(wall, 0.5, 33),
+      along(wall, 0.3, 28),
     ],
     entry.frame,
   );
-  roomPolygon(
+  pixelFace(
     ctx,
     [
-      along(wall, 0.31, 0),
-      along(wall, 1.69, 0),
-      along(wall, 1.69, 26),
+      along(wall, 0.42, 0),
+      along(wall, 1.58, 0),
+      along(wall, 1.58, 27),
       along(wall, 1.46, 30),
       along(wall, 0.54, 30),
-      along(wall, 0.31, 26),
+      along(wall, 0.42, 27),
     ],
     entry.hall,
   );
-  line(ctx, along(wall, 0.23, 0), along(wall, 0.23, 27), entry.liner);
+  line(ctx, along(wall, 0.35, 0), along(wall, 0.35, 27), entry.liner);
   line(ctx, along(wall, 0.54, 31), along(wall, 1.49, 31), entry.liner);
-  wallBand(ctx, wall, 1.44, 1.69, 0, 25, entry.inside);
-  const a = along(wall, 0.24, 0);
-  const b = along(wall, 1.76, 0);
+  wallBand(ctx, wall, 1.38, 1.58, 0, 26, entry.inside);
+  const a = along(wall, 0.35, 0);
+  const b = along(wall, 1.65, 0);
   const offset = wall.north ? floorPoint({ x: 0, y: 0 }, 0, 5) : floorPoint({ x: 0, y: 0 }, 5, 0);
   const c = { x: b.x + offset.x, y: b.y + offset.y };
   const d = { x: a.x + offset.x, y: a.y + offset.y };
-  roomPolygon(ctx, [a, b, c, d], entry.threshold);
+  pixelFace(ctx, [a, b, c, d], entry.threshold);
   wallBand(ctx, { a: d, b: c }, 0, 1, -1, 0, entry.sill);
 }
 
@@ -203,23 +232,23 @@ function paintBoards(
   row: number,
   at: TileAt,
 ): void {
-  for (const y of [0, 5, 11]) {
-    line(ctx, floorPoint(point, 0, y), floorPoint(point, TILE_SIZE, y), ROOM_COLORS.floorSeam);
-    if ((col + row + y) % 3 !== 0) {
-      line(ctx, floorPoint(point, 2, y + 1), floorPoint(point, 12, y + 1), ROOM_COLORS.woodGrain);
-    }
-    const end = ((y * 5 + row * 7) % 12) + 2;
-    if ((col + y) % 2 === 0) {
+  for (const y of [0, TILE_SIZE / 2]) {
+    line(ctx, floorPoint(point, 0, y), floorPoint(point, TILE_SIZE, y), ROOM_COLORS.woodSeam);
+    const end = ((y * 5 + row * 7) % 10) + 3;
+    if ((col + row + y / 4) % 3 === 0) {
       line(
         ctx,
         floorPoint(point, end, y),
-        floorPoint(point, end, Math.min(y + 5, TILE_SIZE)),
-        ROOM_COLORS.floorSeam,
+        floorPoint(point, end, y + TILE_SIZE / 2),
+        ROOM_COLORS.woodSeam,
       );
+    }
+    if ((col + row + y) % 4 === 0) {
+      line(ctx, floorPoint(point, 3, y + 2), floorPoint(point, 10, y + 2), ROOM_COLORS.woodGlint);
     }
   }
   if (at(col - 1, row) !== TileType.FLOOR_7) {
-    line(ctx, point, floorPoint(point, 0, TILE_SIZE), ROOM_COLORS.floorSeam);
+    line(ctx, point, floorPoint(point, 0, TILE_SIZE), ROOM_COLORS.woodSeam);
   }
 }
 
@@ -260,18 +289,23 @@ function buildRoomShell(layout: OfficeLayout): RoomShell | null {
 
       const rug = carpetTiles?.[row * cols + col];
       const floor = ROOM_COLORS.floor[tile - 1]?.[(row + col) % 2] ?? ROOM_COLORS.floorFallback;
-      roomPolygon(
+      pixelFace(
         ctx,
         face,
         tile === TileType.WALL ? ROOM_COLORS.wallBase : rug ? carpetColor(rug.color) : floor,
       );
-      if (tile === TileType.FLOOR_7 && !rug) paintBoards(ctx, point, col, row, at);
-      else {
-        ctx.strokeStyle = ROOM_COLORS.floorSeam;
-        ctx.stroke();
-        if (tile === TileType.FLOOR_1 && !rug) {
-          line(ctx, floorPoint(point, 2, 2), floorPoint(point, 14, 2), ROOM_COLORS.floorGlint);
-        }
+      if (tile === TileType.FLOOR_7 && !rug) {
+        paintBoards(ctx, point, col, row, at);
+      } else if (tile === TileType.FLOOR_1 && !rug) {
+        // Join neighboring teal tiles into a broad woven area, with binding
+        // on the outer edge instead of a heavy seam between each tile.
+        if (at(col, row - 1) !== tile) line(ctx, point, right, ROOM_COLORS.tealSeam);
+        if (frontX !== tile) line(ctx, right, bottom, ROOM_COLORS.tealSeam);
+        if (frontY !== tile) line(ctx, left, bottom, ROOM_COLORS.tealSeam);
+        if (at(col - 1, row) !== tile) line(ctx, point, left, ROOM_COLORS.tealSeam);
+      } else if (tile !== TileType.WALL && !rug) {
+        line(ctx, point, right, ROOM_COLORS.floorSeam);
+        line(ctx, point, left, ROOM_COLORS.floorSeam);
       }
 
       if (tile !== TileType.WALL) continue;
@@ -294,12 +328,6 @@ function buildRoomShell(layout: OfficeLayout): RoomShell | null {
   }
   for (const wall of walls) paintWall(ctx, wall);
   paintWallFixtures(ctx, layout, walls, at);
-  // The room's outside edge uses full pixels, like the furniture silhouettes.
-  const shell = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  for (let i = 3; i < shell.data.length; i += 4) {
-    shell.data[i] = shell.data[i] >= 128 ? 255 : 0;
-  }
-  ctx.putImageData(shell, 0, 0);
   return { canvas, origin };
 }
 
