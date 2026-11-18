@@ -330,3 +330,26 @@ export function drawRoomShell(
     ctx.stroke();
   }
 }
+
+/** Keep the destination visible after the pointer leaves the chosen tile. */
+export function drawRoomTarget(
+  ctx: CanvasRenderingContext2D,
+  projection: RoomProjection,
+  zoom: number,
+  tile: { col: number; row: number },
+): void {
+  const top = projection.toScreen(tile.col * TILE_SIZE, tile.row * TILE_SIZE);
+  roomPolygon(
+    ctx,
+    [
+      floorPoint(top, 2, 2, zoom),
+      floorPoint(top, 14, 2, zoom),
+      floorPoint(top, 14, 14, zoom),
+      floorPoint(top, 2, 14, zoom),
+    ],
+    ROOM_COLORS.destinationFill,
+  );
+  ctx.strokeStyle = ROOM_COLORS.destinationBorder;
+  ctx.lineWidth = Math.max(1, Math.floor(zoom / 2));
+  ctx.stroke();
+}

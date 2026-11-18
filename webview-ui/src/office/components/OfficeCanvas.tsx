@@ -5,6 +5,7 @@ import {
   CAMERA_FOLLOW_SNAP_THRESHOLD,
   OFFICE_CANVAS_TEST_ID,
   PAN_MARGIN_FRACTION,
+  VISITOR_ID,
   ZOOM_MAX,
   ZOOM_MIN,
   ZOOM_SCROLL_THRESHOLD,
@@ -51,6 +52,7 @@ interface OfficeCanvasProps {
   officeState: OfficeState;
   onClick: (agentId: number) => void;
   visiting: boolean;
+  onVisitorTap?: () => void;
   canFocusDesk: (agentId: number) => boolean;
   isEditMode: boolean;
   editorState: EditorState;
@@ -81,6 +83,7 @@ export function OfficeCanvas({
   officeState,
   onClick,
   visiting,
+  onVisitorTap,
   canFocusDesk,
   isEditMode,
   editorState,
@@ -340,7 +343,7 @@ export function OfficeCanvas({
     ) => {
       const room = roomRef.current;
       if (room && furniture) {
-        const seat = roomSeatAt(officeState, furniture, room, pos.deviceX, pos.deviceY);
+        const seat = roomSeatAt(officeState, furniture, room, pos.deviceX, pos.deviceY, zoom);
         if (seat) return { kind: 'seat', seatId: seat.uid } as const;
         const item = officeState.getLayout().furniture.find(({ uid }) => uid === furniture.uid);
         const entry = item && getCatalogEntry(item.type);
@@ -746,19 +749,24 @@ export function OfficeCanvas({
       if (!pos) return;
 
       const { agentId: hitId, petId, furniture, surfaceHeight } = actorAt(pos);
+      if (visiting && hitId === VISITOR_ID) {
+        onVisitorTap?.();
+        return;
+      }
       if (hitId !== null) {
         if (visiting) officeState.cancelVisitorArrival();
         // Dismiss any active bubble on click
         officeState.dismissBubble(hitId);
-        // Two-step (mobile): first tap selects + follows so the status label
-        // shows; only a repeat tap on the same character opens its terminal.
+        // The room and phone show character status on the first tap and
+        // focus the terminal on the next tap.
         // Deselection is tapping empty floor, as ever.
-        if (tapSelectsFirst) {
+        if (tapSelectsFirst || visiting) {
           if (officeState.selectedAgentId === hitId) {
             onClick(hitId);
           } else {
             officeState.selectedAgentId = hitId;
-            officeState.cameraFollowId = hitId;
+            // Keep the sprite under the pointer for the room's repeat click.
+            officeState.cameraFollowId = visiting ? null : hitId;
           }
           return;
         }
@@ -777,6 +785,7 @@ export function OfficeCanvas({
       if (visiting) {
         // In this view chairs are visitor actions. Agent seat reassignment is
         // available in the regular office, and existing agent hits still work.
+        officeState.selectedAgentId = null;
         officeState.breakCameraFollow();
         if (petId !== null) {
           officeState.petWithVisitor(petId);
@@ -855,6 +864,7 @@ export function OfficeCanvas({
       deskCanOpen,
       officeState,
       onClick,
+      onVisitorTap,
       openDesk,
       screenToWorld,
       screenToTile,
@@ -868,12 +878,18 @@ export function OfficeCanvas({
     (event: ReactKeyboardEvent<HTMLCanvasElement>) => {
       const visitor = visiting ? officeState.visitor : null;
       const step = VISITOR_STEPS.get(event.key);
-      if (!visitor || !step || event.altKey || event.ctrlKey || event.metaKey) return;
+      if (!visitor || event.altKey || event.ctrlKey || event.metaKey) return;
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        onVisitorTap?.();
+        return;
+      }
+      if (!step) return;
       event.preventDefault();
       officeState.breakCameraFollow();
       officeState.moveVisitor(visitor.tileCol + step.col, visitor.tileRow + step.row);
     },
-    [officeState, visiting],
+    [officeState, onVisitorTap, visiting],
   );
 
   const handleClick = useCallback(

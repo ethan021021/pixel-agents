@@ -246,6 +246,8 @@ export const GREETER_ID = -1_000_000_000;
 export const VISITOR_ID = -1_000_000_001;
 export const VISITOR_MARKER_BACKGROUND = '#172531';
 export const VISITOR_MARKER_TEXT = '#c6f5ff';
+export const VISITOR_WAVE_SEC = 1.2;
+export const VISITOR_WAVE_BEAT_SEC = 0.15;
 
 export const ROOM_COLORS = {
   background: '#17131d',
@@ -268,6 +270,8 @@ export const ROOM_COLORS = {
   rug: '#916c76',
   hoverFill: '#e9f5bf65',
   hoverBorder: '#f3eab4',
+  destinationFill: '#ffe89843',
+  destinationBorder: '#ffe0a0',
   platformRight: '#644938',
   platformLeft: '#46333a',
   wallBase: '#9d7758',

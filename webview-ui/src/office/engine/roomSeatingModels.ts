@@ -1,4 +1,4 @@
-import type { RoomBox, RoomModel, RoomModelInput } from '../roomModel.js';
+import type { RoomBox, RoomModel, RoomModelInput, RoomSeatSurface } from '../roomModel.js';
 import { TILE_SIZE } from '../types.js';
 
 type Faces = RoomBox['colors'];
@@ -177,25 +177,25 @@ function seatSpace(input: RoomModelInput) {
   const d = input.depth - y - 1;
   const facing = input.type.endsWith(':left') ? 'left' : input.orientation;
   const side = facing === 'left' || facing === 'right' || facing === 'side';
+  const nearBack = facing === 'back' || facing === 'left';
 
   // Work from the backrest toward the front of the seat, in any rotation.
+  const anchor = (u: number, v: number, z: number): RoomSeatSurface => {
+    if (facing === 'left') return { x: x + w - v, y: y + u, z };
+    if (side) return { x: x + v, y: y + u, z };
+    if (facing === 'back') return { x: x + u, y: y + d - v, z };
+    return { x: x + u, y: y + v, z };
+  };
   const place: Piece = (u, v, z, width, depth, height, colors) => {
-    if (facing === 'left') return box(x + w - v - depth, y + u, z, depth, width, height, colors);
-    if (side) return box(x + v, y + u, z, depth, width, height, colors);
-    if (facing === 'back') return box(x + u, y + d - v - depth, z, width, depth, height, colors);
-    return box(x + u, y + v, z, width, depth, height, colors);
+    const origin = anchor(u, nearBack ? v + depth : v, z);
+    return box(origin.x, origin.y, z, side ? depth : width, side ? width : depth, height, colors);
   };
 
-  return {
-    width: side ? d : w,
-    depth: side ? w : d,
-    place,
-    nearBack: facing === 'back' || facing === 'left',
-  };
+  return { width: side ? d : w, depth: side ? w : d, place, anchor, nearBack };
 }
 
 function upholsteredSeat(input: RoomModelInput, sofa: boolean): RoomModel {
-  const { width, depth, place, nearBack } = seatSpace(input);
+  const { width, depth, place, anchor, nearBack } = seatSpace(input);
   const cloth = sofa ? SOFA : WINE;
   const boxes = [
     place(1.3, 1.2, 0, width - 2.6, depth - 2.4, 1.8, cloth.plinth),
@@ -221,22 +221,39 @@ function upholsteredSeat(input: RoomModelInput, sofa: boolean): RoomModel {
   const cushions = sofa ? 2 : 1;
   const gap = 0.85;
   const cushionWidth = (width - 2 * arm - (cushions + 1) * gap) / cushions;
+  const crownBack = 3.35;
+  const crownDepth = depth - 4.25;
+  const crownBase = 7;
+  const crownHeight = 1.1;
+  const anchors: RoomSeatSurface[] = [];
   for (let i = 0; i < cushions; i++) {
     const u = arm + gap + i * (cushionWidth + gap);
     boxes.push(
       place(u, 3, 5.5, cushionWidth, depth - 3.45, 1.5, cloth.seat),
-      place(u + 0.35, 3.35, 7, cushionWidth - 0.7, depth - 4.25, 1.1, cloth.crown),
+      place(
+        u + 0.35,
+        crownBack,
+        crownBase,
+        cushionWidth - 0.7,
+        crownDepth,
+        crownHeight,
+        cloth.crown,
+      ),
       place(u + 0.35, depth - 0.85, 6.25, cushionWidth - 0.7, 0.4, 0.5, cloth.welt),
+    );
+    anchors.push(
+      anchor(u + cushionWidth / 2, crownBack + crownDepth / 2 - 1, crownBase + crownHeight),
     );
   }
 
-  boxes.push(...armrest(width - arm));
-  if (nearBack) boxes.push(...back);
-  return { boxes };
+  const foreground = armrest(width - arm);
+  if (nearBack) foreground.push(...back);
+  boxes.push(...foreground);
+  return { boxes, seating: { anchors, foreground } };
 }
 
 function woodenSeat(input: RoomModelInput, bench: boolean, cushioned: boolean): RoomModel {
-  const { width, depth, place, nearBack } = seatSpace(input);
+  const { width, depth, place, anchor, nearBack } = seatSpace(input);
   const boxes = corners(width, depth, 1.15, 1.65).map(([lx, ly]) =>
     place(lx, ly, 0, 1.65, 1.65, 5, WOOD.frame),
   );
@@ -255,11 +272,15 @@ function woodenSeat(input: RoomModelInput, bench: boolean, cushioned: boolean): 
       ];
 
   if (!nearBack) boxes.push(...back);
+  const topBack = cushioned ? 1.8 : 0.8;
+  const topDepth = depth - (cushioned ? 3 : 1.1);
+  const topBase = cushioned ? 7.85 : 5;
+  const topHeight = cushioned ? 0.65 : 1.45;
   boxes.push(place(0, 0.8, 5, width, depth - 1.1, 1.45, WOOD.edge));
   if (cushioned) {
     boxes.push(
       place(0.7, 1.3, 6.45, width - 1.4, depth - 2, 1.4, BENCH.seat),
-      place(1.2, 1.8, 7.85, width - 2.4, depth - 3, 0.65, BENCH.crown),
+      place(1.2, topBack, topBase, width - 2.4, topDepth, topHeight, BENCH.crown),
       place(1, depth - 1.2, 7.15, width - 2, 0.5, 0.4, BENCH.welt),
     );
   } else {
@@ -268,8 +289,10 @@ function woodenSeat(input: RoomModelInput, bench: boolean, cushioned: boolean): 
       place(1, depth * 0.66, 6.25, width - 2, 0.55, 0.2, WOOD.grain),
     );
   }
-  if (nearBack) boxes.push(...back);
-  return { boxes };
+  const foreground = nearBack ? back : [];
+  boxes.push(...foreground);
+  const hips = anchor(width / 2, topBack + topDepth / 2 - (bench ? 0 : 1), topBase + topHeight);
+  return { boxes, seating: { anchors: [hips], foreground } };
 }
 
 export function roomSeatingModel(input: RoomModelInput): RoomModel | null {

@@ -52,7 +52,7 @@ export function roomProjection(
 /** Bounds of the upright sprite, in canvas device pixels. */
 export function roomFurnitureBounds(
   furniture: FurnitureInstance,
-  projection: RoomProjection,
+  projection: Pick<RoomProjection, 'toScreen'>,
   zoom: number,
 ): { x: number; y: number; width: number; height: number; depth: number } {
   const spriteWidth = furniture.sprite[0].length;

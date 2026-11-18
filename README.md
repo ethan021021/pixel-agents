@@ -96,7 +96,7 @@ The printed URL carries a `?token=`. Without it you can watch the office in a so
 
 ### Walk around the office
 
-In the editable browser office, choose **Walk around**, then pick a character from your wardrobe. Click or tap a floor tile to walk there, an unassigned chair to sit, or a pet to give it a heart. The arrow keys also move your character while the floor is focused. Click a desk with a live browser terminal to walk over and open that agent's terminal.
+In the editable browser office, choose **Walk around**, then pick a character from your wardrobe. Click or tap a floor tile to walk there, an unassigned chair to sit, or a pet to give it a heart. Click yourself for **Wave**, or press Enter when the floor is focused. The arrow keys also move your character. Click an agent to see their status and click again to open their terminal. You can also click a desk with a live browser terminal to walk over and open it.
 
 The angled view uses your existing office layout. Choose **Leave office** to return to the flat view whenever you like.
 

@@ -2,18 +2,25 @@ import assert from 'node:assert/strict';
 
 import { beforeAll, test } from 'vitest';
 
+import { rgbaToHex } from '../../core/src/assets/colorUtils.js';
+import { WALK_SPEED_PX_PER_SEC } from '../src/constants.js';
 import { roomActorAt, roomSeatAt } from '../src/office/components/roomHitTesting.js';
 import { OfficeState } from '../src/office/engine/officeState.js';
 import { createPet } from '../src/office/engine/petEntity.js';
+import { ROOM_SEATED_HIP } from '../src/office/engine/roomCharacterArt.js';
+import { roomCharacterFrame } from '../src/office/engine/roomCharacterFrame.js';
 import {
   roomFurnitureArt,
   roomFurnitureSpriteBounds,
+  roomSeatArt,
 } from '../src/office/engine/roomFurnitureArt.js';
 import { roomSeatingModel } from '../src/office/engine/roomSeatingModels.js';
 import type { LoadedAssetData } from '../src/office/layout/furnitureCatalog.js';
 import { buildDynamicCatalog } from '../src/office/layout/furnitureCatalog.js';
+import { findPath } from '../src/office/layout/tileMap.js';
 import { roomProjection } from '../src/office/roomProjection.js';
 import { setPetTemplates } from '../src/office/sprites/petSpriteData.js';
+import { setCharacterTemplates } from '../src/office/sprites/spriteData.js';
 import type { OfficeLayout } from '../src/office/types.js';
 import { CharacterState, PetState, TILE_SIZE, TileType } from '../src/office/types.js';
 
@@ -21,6 +28,16 @@ beforeAll(() => {
   const furniture = { label: 'Fixture', width: 16, height: 16, footprintW: 1, footprintH: 1 };
   const catalog: LoadedAssetData['catalog'] = [
     { ...furniture, id: 'VISITOR_CHAIR', category: 'chairs', isDesk: false },
+    {
+      ...furniture,
+      id: 'SOFA_BACK',
+      category: 'chairs',
+      isDesk: false,
+      orientation: 'back',
+      footprintW: 2,
+      footprintH: 2,
+      backgroundTiles: 1,
+    },
     {
       ...furniture,
       id: 'VISITOR_SOFA',
@@ -48,6 +65,7 @@ beforeAll(() => {
       catalog,
       sprites: {
         VISITOR_CHAIR: [['c']],
+        SOFA_BACK: [['s']],
         VISITOR_SOFA: [['s']],
         VISITOR_DESK: [['d']],
         VISITOR_SHARED_DESK: [['d']],
@@ -56,6 +74,14 @@ beforeAll(() => {
       },
     }),
   );
+  const frame = Array.from({ length: 32 }, (_, y) =>
+    Array.from({ length: 16 }, (_, x) =>
+      y > 7 && y < 31 && x > 4 && x < 11 ? rgbaToHex(131, 106, 99, 255) : '',
+    ),
+  );
+  const frames = Array(8).fill(frame);
+  const look = { down: frames, up: frames, right: frames };
+  setCharacterTemplates([look, look]);
 });
 
 function layout(): OfficeLayout {
@@ -77,7 +103,7 @@ function run(office: OfficeState): void {
   for (let i = 0; i < 250; i++) office.update(1 / 30);
 }
 
-test('redirects the visitor mid-step without snapping and keeps the visitor local', () => {
+test('walks diagonally at normal speed and redirects mid-step without snapping', () => {
   const office = new OfficeState(layout());
   assert.equal(office.enterOffice(1), true);
   const visitor = office.visitor!;
@@ -85,17 +111,52 @@ test('redirects the visitor mid-step without snapping and keeps the visitor loca
   assert.equal(office.getCharacters().includes(visitor), true);
   assert.equal(office.characters.size, 0);
   assert.deepEqual(office.getPersistableSeats(), {});
-  assert.equal(office.moveVisitor(1, 1), true);
+  assert.equal(office.moveVisitor(1, 4), true);
+  assert.deepEqual(visitor.path, [
+    { col: 3, row: 6 },
+    { col: 2, row: 5 },
+    { col: 1, row: 4 },
+  ]);
+  const start = { x: visitor.x, y: visitor.y };
   office.update(0.1);
   const { x, y, moveProgress } = visitor;
   assert.ok(moveProgress > 0);
+  assert.ok(x < start.x && y < start.y);
+  assert.ok(Math.abs(Math.hypot(x - start.x, y - start.y) - WALK_SPEED_PX_PER_SEC * 0.1) < 1e-9);
+  const step = visitor.path[0];
   assert.equal(office.moveVisitor(7, 7), true);
+  assert.deepEqual(visitor.path[0], step);
   assert.deepEqual([visitor.x, visitor.y, visitor.moveProgress], [x, y, moveProgress]);
   run(office);
   assert.deepEqual([visitor.tileCol, visitor.tileRow, visitor.state], [7, 7, CharacterState.IDLE]);
   assert.equal(office.moveVisitor(3, 1), false, 'the desk blocks floor movement');
   office.leaveOffice();
   assert.deepEqual(office.getCharacters(), []);
+});
+
+test('the visitor cannot cut the corner of a wall or furniture, while ordinary paths stay axial', () => {
+  const floor = TileType.FLOOR_1;
+  const map = [
+    [floor, floor],
+    [floor, floor],
+  ];
+  assert.deepEqual(findPath(0, 0, 1, 1, map, new Set()), [
+    { col: 0, row: 1 },
+    { col: 1, row: 1 },
+  ]);
+  assert.deepEqual(findPath(0, 0, 1, 1, map, new Set(['0,1']), true), [
+    { col: 1, row: 0 },
+    { col: 1, row: 1 },
+  ]);
+  const walledMap = [
+    [floor, TileType.WALL],
+    [floor, floor],
+  ];
+  assert.deepEqual(findPath(0, 0, 1, 1, walledMap, new Set(), true), [
+    { col: 0, row: 1 },
+    { col: 1, row: 1 },
+  ]);
+  assert.deepEqual(findPath(0, 0, 1, 1, walledMap, new Set(['0,1']), true), []);
 });
 
 test('notifies visitor subscribers only when presence changes', () => {
@@ -143,6 +204,40 @@ test('room furniture hits choose the clear seat nearest the click on a two-seat 
   assert.equal(roomSeatAt(office, furniture, room, x, y)?.uid, 'sofa:1');
   office.addAgent(8, 0, 0, 'sofa:1', true);
   assert.equal(roomSeatAt(office, furniture, room, x, y)?.uid, 'sofa');
+});
+
+test('anchors each sofa occupant to their cushion and keeps the visible head clickable', () => {
+  const saved = layout();
+  saved.furniture.push({ uid: 'modeled-sofa', type: 'SOFA_BACK', col: 2, row: 4 });
+  const office = new OfficeState(saved);
+  assert.equal(office.enterOffice(0), true);
+  assert.equal(office.sitVisitor('modeled-sofa:1'), true);
+  run(office);
+  const visitor = office.visitor!;
+  const seat = roomSeatArt(office, visitor.seatId);
+  const other = roomSeatArt(office, 'modeled-sofa');
+  assert.ok(seat);
+  assert.ok(other);
+  assert.ok(seat.x > other.x);
+  assert.equal(seat.chair, other.chair);
+  assert.ok(seat.chair.model?.sprite.seating?.foreground);
+
+  const zoom = 3;
+  const view = roomProjection(640, 480, saved.cols, saved.rows, zoom, 0, 0);
+  const frame = roomCharacterFrame(visitor, view, zoom, seat);
+  const contact = view.toScreen(seat.x, seat.y);
+  assert.equal(frame.x, Math.round(contact.x - ROOM_SEATED_HIP.x * zoom));
+  assert.equal(frame.y, Math.round(contact.y - (seat.z + ROOM_SEATED_HIP.y) * zoom));
+  const row = frame.pixels.findIndex((line) => line.some(Boolean));
+  const col = frame.pixels[row].findIndex(Boolean);
+  const hit = roomActorAt(
+    office,
+    view,
+    zoom,
+    frame.x + (col + 0.5) * zoom,
+    frame.y + (row + 0.5) * zoom,
+  );
+  assert.equal(hit.agentId, visitor.id);
 });
 
 test('picks the original desk from its modeled pixels and preserves custom furniture art', () => {

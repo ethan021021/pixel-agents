@@ -205,6 +205,8 @@ export interface Character extends Blinker {
   frame: number;
   /** Time accumulator for animation */
   frameTimer: number;
+  /** Time remaining in the visitor's local wave. */
+  visitorWave?: number;
   /** Timer for idle wander decisions */
   wanderTimer: number;
   /** Number of wander moves completed in current roaming cycle */

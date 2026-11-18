@@ -8,20 +8,30 @@ import { Button } from './ui/Button.js';
 
 interface OfficeVisitControlsProps {
   visiting: boolean;
+  actionsOpen: boolean;
   onEnter: (palette: number) => boolean;
   onLeave: () => void;
+  onWave: () => void;
 }
 
-export function OfficeVisitControls({ visiting, onEnter, onLeave }: OfficeVisitControlsProps) {
+export function OfficeVisitControls({
+  visiting,
+  actionsOpen,
+  onEnter,
+  onLeave,
+  onWave,
+}: OfficeVisitControlsProps) {
   const { profiles } = useCast();
   const [choosing, setChoosing] = useState(false);
   const [entryFailed, setEntryFailed] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const firstChoice = useRef<HTMLButtonElement>(null);
+  const wave = useRef<HTMLButtonElement>(null);
   const pickerId = useId();
   const headingId = useId();
   const open = choosing && !visiting;
+  const showActions = visiting && actionsOpen;
 
   const closePicker = useCallback(() => {
     setChoosing(false);
@@ -32,6 +42,10 @@ export function OfficeVisitControls({ visiting, onEnter, onLeave }: OfficeVisitC
   useEffect(() => {
     if (open) firstChoice.current?.focus();
   }, [open]);
+
+  useEffect(() => {
+    if (showActions) wave.current?.focus({ preventScroll: true });
+  }, [showActions]);
 
   const enter = (palette: number) => {
     if (onEnter(palette)) closePicker();
@@ -68,10 +82,17 @@ export function OfficeVisitControls({ visiting, onEnter, onLeave }: OfficeVisitC
       >
         {visiting ? 'Leave office' : 'Walk around'}
       </Button>
-      {visiting && (
+      {visiting && !showActions && (
         <p className="pixel-panel max-w-224 select-none px-8 py-4 text-xs leading-tight text-text-muted">
-          Pick a tile, chair, pet, or desk.
+          Pick a tile to walk. Pick yourself for actions.
         </p>
+      )}
+      {showActions && (
+        <div role="group" aria-label="Your actions" className="pixel-panel pointer-events-auto p-4">
+          <Button ref={wave} type="button" size="md" className="min-h-40" onClick={onWave}>
+            Wave
+          </Button>
+        </div>
       )}
       {open && (
         <section

@@ -1,10 +1,14 @@
-import { PET_HIT_HALF_WIDTH, PET_HIT_HEIGHT } from '../../constants.js';
+import { GREETER_ID, PET_HIT_HALF_WIDTH, PET_HIT_HEIGHT } from '../../constants.js';
 import type { OfficeState } from '../engine/officeState.js';
 import { roomCharacterFrame } from '../engine/roomCharacterFrame.js';
-import { roomFurnitureArt, roomFurnitureSpriteBounds } from '../engine/roomFurnitureArt.js';
+import {
+  roomFurnitureArt,
+  roomFurnitureSpriteBounds,
+  roomSeatArt,
+} from '../engine/roomFurnitureArt.js';
 import { getCatalogEntry } from '../layout/furnitureCatalog.js';
 import type { RoomProjection } from '../roomProjection.js';
-import type { FurnitureInstance, Seat } from '../types.js';
+import type { FurnitureInstance, Seat, SpriteData } from '../types.js';
 import { TILE_SIZE } from '../types.js';
 
 /** Use the same projected sprites and depth order as the room renderer. */
@@ -24,15 +28,18 @@ export function roomActorAt(
   let depth = surface?.depth ?? -Infinity;
   let agentId: number | null = null;
   let petId: string | null = null;
-  for (const ch of office.characters.values()) {
-    if (ch.matrixEffect === 'despawn') continue;
-    const frame = roomCharacterFrame(ch, projection, zoom);
-    const col = Math.floor((x - frame.x) / zoom);
-    const row = Math.floor((y - frame.y) / zoom);
-    if (frame.depth >= depth && frame.pixels[row]?.[col]) {
-      depth = frame.depth;
-      agentId = ch.id;
+  for (const ch of office.getCharacters()) {
+    if (ch.id === GREETER_ID || ch.matrixEffect === 'despawn') continue;
+    const frame = roomCharacterFrame(ch, projection, zoom, roomSeatArt(office, ch.seatId));
+    if (frame.depth < depth || !pickPixel(frame.pixels, frame, zoom, x, y)) continue;
+    const chair = frame.cushion?.chair;
+    const front = chair?.model?.sprite.seating?.foreground;
+    if (chair && front) {
+      const bounds = roomFurnitureSpriteBounds(chair, projection, zoom, front);
+      if (pickPixel(front.pixels, bounds, zoom, x, y)) continue;
     }
+    depth = frame.depth;
+    agentId = ch.id;
   }
   for (const pet of office.getPets()) {
     const foot = projection.toScreen(pet.x, pet.y);
@@ -56,6 +63,19 @@ export function roomActorAt(
   };
 }
 
+function pickPixel(
+  pixels: SpriteData,
+  origin: { x: number; y: number },
+  zoom: number,
+  x: number,
+  y: number,
+  mirror = false,
+): boolean {
+  const col = Math.floor((x - origin.x) / zoom);
+  const row = Math.floor((y - origin.y) / zoom);
+  return !!pixels[row]?.[mirror ? pixels[0].length - 1 - col : col];
+}
+
 /** A click on a furniture sprite's face can sit above its floor tile. */
 function roomFurnitureAt(
   office: OfficeState,
@@ -68,10 +88,7 @@ function roomFurnitureAt(
   for (const art of roomFurnitureArt(office.furniture, office.getLayout())) {
     const bounds = roomFurnitureSpriteBounds(art, projection, zoom);
     if (hit && bounds.depth < hit.depth) continue;
-    const col = Math.floor((x - bounds.x) / zoom);
-    const row = Math.floor((y - bounds.y) / zoom);
-    const spriteCol = art.mirror ? art.pixels[0].length - 1 - col : col;
-    if (!art.pixels[row]?.[spriteCol]) continue;
+    if (!pickPixel(art.pixels, bounds, zoom, x, y, art.mirror)) continue;
     hit = { furniture: art.furniture, depth: bounds.depth, surfaceHeight: art.surfaceHeight ?? 0 };
   }
   return hit;
@@ -83,6 +100,7 @@ export function roomSeatAt(
   projection: RoomProjection,
   x: number,
   y: number,
+  zoom = 1,
 ): Seat | null {
   const item = office.getLayout().furniture.find(({ uid }) => uid === furniture.uid);
   const entry = item && getCatalogEntry(item.type);
@@ -98,11 +116,12 @@ export function roomSeatAt(
       seat.seatRow >= item.row + entry.footprintH
     )
       continue;
-    const foot = projection.toScreen(
-      (seat.seatCol + 0.5) * TILE_SIZE,
-      (seat.seatRow + 0.5) * TILE_SIZE,
+    const cushion = roomSeatArt(office, seat.uid);
+    const point = projection.toScreen(
+      cushion?.x ?? (seat.seatCol + 0.5) * TILE_SIZE,
+      cushion?.y ?? (seat.seatRow + 0.5) * TILE_SIZE,
     );
-    const score = (foot.x - x) ** 2 + (foot.y - y) ** 2;
+    const score = (point.x - x) ** 2 + (point.y - (cushion?.z ?? 0) * zoom - y) ** 2;
     if (score < distance) {
       closest = seat;
       distance = score;

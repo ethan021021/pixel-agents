@@ -22,7 +22,8 @@ import type { SubagentCharacter } from '../../hooks/useExtensionMessages.js';
 import { ContextBar } from '../ContextBar.js';
 import { contextLeft } from '../contextGauge.js';
 import type { OfficeState } from '../engine/officeState.js';
-import { roomCharacterHeadroom, roomCharacterPixels } from '../engine/roomCharacterFrame.js';
+import { roomCharacterFrame, roomCharacterHeadroom } from '../engine/roomCharacterFrame.js';
+import { roomSeatArt } from '../engine/roomFurnitureArt.js';
 import { overlayProjection } from '../projection.js';
 import { getCachedSprite } from '../sprites/spriteCache.js';
 import { BUBBLE_PERMISSION_SPRITE, BUBBLE_WAITING_SPRITE } from '../sprites/spriteData.js';
@@ -163,7 +164,13 @@ export function ToolOverlay({
         const spriteScale = zoom / dpr;
         const sitting = ch.state === CharacterState.TYPE;
         const sittingOffset = sitting ? CHARACTER_SITTING_OFFSET_PX : 0;
-        const roomHeadroom = angled ? roomCharacterHeadroom(roomCharacterPixels(ch)) : null;
+        const frame = angled
+          ? roomCharacterFrame(ch, project, spriteScale, roomSeatArt(officeState, ch.seatId))
+          : null;
+        const headX = frame ? frame.x + frame.width / 2 : anchor.x;
+        const roomHeadY = frame
+          ? frame.y + frame.height - roomCharacterHeadroom(frame.pixels) * spriteScale
+          : null;
 
         // Speech bubble (permission dots / done checkmark) — rendered here in
         // the DOM, above the label panels (OVERLAY_BUBBLE_Z_INDEX over the label panels), for every
@@ -178,20 +185,19 @@ export function ToolOverlay({
             ch.bubbleType === 'permission' ? BUBBLE_PERMISSION_SPRITE : BUBBLE_WAITING_SPRITE,
             zoom,
           );
-          const bubbleSittingOff = angled ? sittingOffset : sitting ? BUBBLE_SITTING_OFFSET_PX : 0;
+          const bubbleSittingOff = sitting ? BUBBLE_SITTING_OFFSET_PX : 0;
           const alpha =
             ch.bubbleType === 'waiting' && ch.bubbleTimer < BUBBLE_FADE_DURATION_SEC
               ? ch.bubbleTimer / BUBBLE_FADE_DURATION_SEC
               : 1;
           bubbleTop =
-            anchor.y +
-            (bubbleSittingOff - (roomHeadroom ?? BUBBLE_VERTICAL_OFFSET_PX)) * spriteScale -
+            (roomHeadY ?? anchor.y + (bubbleSittingOff - BUBBLE_VERTICAL_OFFSET_PX) * spriteScale) -
             (cachedBubble.height + zoom) / dpr;
           bubbleNode = (
             <div
               className="absolute -translate-x-1/2 pointer-events-none"
               style={{
-                left: anchor.x,
+                left: headX,
                 // Bubble bottom sits one sprite pixel above the character's
                 // anchor: project the anchor, then lift by the bubble's own
                 // device-pixel height plus one zoomed pixel, in CSS px.
@@ -213,9 +219,9 @@ export function ToolOverlay({
 
         // Position above character: the sprite's top edge (the tallest hair
         // reaches it), or the bubble's when one shows over the head.
-        const screenX = anchor.x;
+        const screenX = headX;
         const screenY =
-          anchor.y + (sittingOffset - (roomHeadroom ?? TOOL_OVERLAY_VERTICAL_OFFSET)) * spriteScale;
+          roomHeadY ?? anchor.y + (sittingOffset - TOOL_OVERLAY_VERTICAL_OFFSET) * spriteScale;
         const labelBottom = Math.min(screenY, bubbleTop ?? screenY) - TOOL_OVERLAY_GAP_PX;
 
         // A "Done" agent (finished turn: waiting bubble without awaitingInput)

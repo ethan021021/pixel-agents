@@ -17,8 +17,31 @@ import type { OfficeState } from './officeState.js';
 import { getPetSpriteData } from './petEntity.js';
 import { isGhostHeadlessAgentsEnabled, renderVisitorMarker } from './renderer.js';
 import { roomCharacterFrame, roomCharacterHeadroom } from './roomCharacterFrame.js';
-import { roomFurnitureArt, roomFurnitureSpriteBounds } from './roomFurnitureArt.js';
-import { drawRoomShell, roomPolygon } from './roomShell.js';
+import { roomFurnitureArt, roomFurnitureSpriteBounds, roomSeatArt } from './roomFurnitureArt.js';
+import { drawRoomShell, drawRoomTarget, roomPolygon } from './roomShell.js';
+
+type FurnitureArt = ReturnType<typeof roomFurnitureArt>[number];
+
+function drawFurniture(
+  ctx: CanvasRenderingContext2D,
+  art: FurnitureArt,
+  projection: RoomProjection,
+  zoom: number,
+  foreground: boolean,
+): void {
+  const sprite = foreground ? art.model?.sprite.seating?.foreground : art.model?.sprite;
+  const { x, y, width } = roomFurnitureSpriteBounds(art, projection, zoom, sprite);
+  const image = getCachedSprite(sprite?.pixels ?? art.pixels, zoom);
+  if (art.mirror) {
+    ctx.save();
+    ctx.translate(x + width, y);
+    ctx.scale(-1, 1);
+    ctx.drawImage(image, 0, 0);
+    ctx.restore();
+  } else {
+    ctx.drawImage(image, x, y);
+  }
+}
 
 function footShadow(ctx: CanvasRenderingContext2D, foot: RoomPoint, zoom: number): void {
   const x = Math.round(foot.x);
@@ -44,9 +67,12 @@ export function renderRoom(
     hover && isWalkable(hover.col, hover.row, office.tileMap, office.blockedTiles) ? hover : null;
   const layout = office.getLayout();
   drawRoomShell(ctx, layout, projection, zoom, walkHover);
+  const destination = office.visitor?.path.at(-1);
+  if (destination) drawRoomTarget(ctx, projection, zoom, destination);
 
   const sprites: Array<{ depth: number; draw: () => void }> = [];
   const overlays: Array<() => void> = [];
+  const occupied = new Set<FurnitureArt>();
   for (const art of roomFurnitureArt(office.furniture, layout)) {
     const model = art.model;
     const ground = model?.sprite.footprint;
@@ -66,19 +92,10 @@ export function renderRoom(
         ROOM_COLORS.contactShadow,
       );
     }
-    const { x, y, width, depth } = roomFurnitureSpriteBounds(art, projection, zoom);
-    const image = getCachedSprite(art.pixels, zoom);
+    const { depth } = roomFurnitureSpriteBounds(art, projection, zoom);
     sprites.push({
       depth,
-      draw: () => {
-        if (art.mirror) {
-          ctx.save();
-          ctx.translate(x + width, y);
-          ctx.scale(-1, 1);
-          ctx.drawImage(image, 0, 0);
-          ctx.restore();
-        } else ctx.drawImage(image, x, y);
-      },
+      draw: () => drawFurniture(ctx, art, projection, zoom, false),
     });
   }
   for (const character of office.getCharacters()) {
@@ -89,7 +106,9 @@ export function renderRoom(
       x,
       y,
       height,
-    } = roomCharacterFrame(character, projection, zoom);
+      width,
+      cushion,
+    } = roomCharacterFrame(character, projection, zoom, roomSeatArt(office, character.seatId));
     const image = getCachedSprite(data, zoom);
     const selected = character.id === office.selectedAgentId;
     const hovered = character.id === office.hoveredAgentId;
@@ -118,8 +137,19 @@ export function renderRoom(
     });
     if (character.id === VISITOR_ID) {
       const head = y + height - roomCharacterHeadroom(data) * zoom;
-      overlays.push(() => renderVisitorMarker(ctx, foot.x, head, zoom));
+      overlays.push(() => renderVisitorMarker(ctx, x + width / 2, head, zoom));
     }
+    if (cushion) occupied.add(cushion.chair);
+  }
+  // The near arm and backrest can cover an occupant, even though their hips
+  // and the cushion share the same depth group.
+  for (const art of occupied) {
+    if (!art.model?.sprite.seating?.foreground) continue;
+    const { depth } = roomFurnitureSpriteBounds(art, projection, zoom);
+    sprites.push({
+      depth: depth + 0.02,
+      draw: () => drawFurniture(ctx, art, projection, zoom, true),
+    });
   }
   for (const pet of office.getPets()) {
     const data = getPetSpriteData(pet, getPetSprites(pet.petType));

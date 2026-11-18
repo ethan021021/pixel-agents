@@ -34,7 +34,38 @@ export function getWalkableTiles(
   return tiles;
 }
 
-/** BFS pathfinding on 4-connected grid (no diagonals). Returns path excluding start, including end. */
+const AXIAL_STEPS = [
+  { dc: 0, dr: -1 },
+  { dc: 0, dr: 1 },
+  { dc: -1, dr: 0 },
+  { dc: 1, dr: 0 },
+];
+const ALL_STEPS = [
+  { dc: -1, dr: -1 },
+  { dc: 1, dr: -1 },
+  { dc: -1, dr: 1 },
+  { dc: 1, dr: 1 },
+  ...AXIAL_STEPS,
+];
+
+/** A diagonal step crosses the corners of both adjacent tiles. */
+export function clearsTileCorners(
+  col: number,
+  row: number,
+  nextCol: number,
+  nextRow: number,
+  tileMap: TileType[][],
+  blockedTiles: Set<string>,
+): boolean {
+  return (
+    col === nextCol ||
+    row === nextRow ||
+    (isWalkable(nextCol, row, tileMap, blockedTiles) &&
+      isWalkable(col, nextRow, tileMap, blockedTiles))
+  );
+}
+
+/** Shortest path from start to end. The visitor can opt into diagonal A*. */
 export function findPath(
   startCol: number,
   startRow: number,
@@ -42,37 +73,44 @@ export function findPath(
   endRow: number,
   tileMap: TileType[][],
   blockedTiles: Set<string>,
+  diagonals = false,
 ): Array<{ col: number; row: number }> {
   if (startCol === endCol && startRow === endRow) return [];
+  if (!isWalkable(endCol, endRow, tileMap, blockedTiles)) return [];
 
   const key = (c: number, r: number) => `${c},${r}`;
   const startKey = key(startCol, startRow);
   const endKey = key(endCol, endRow);
-
-  // End must be walkable (or be a chair tile which may be adjacent to desk)
-  // We allow the end tile even if it's not strictly walkable for chair positions
-  const endWalkable = isWalkable(endCol, endRow, tileMap, blockedTiles);
-  if (!endWalkable) {
-    // If the end is a desk tile, we still can't path there
-    return [];
-  }
-
-  const visited = new Set<string>();
-  visited.add(startKey);
-
+  const costs = new Map([[startKey, 0]]);
   const parent = new Map<string, string>();
-  const queue: Array<{ col: number; row: number }> = [{ col: startCol, row: startRow }];
+  const queue = [{ col: startCol, row: startRow, cost: 0, estimate: 0 }];
+  const dirs = diagonals ? ALL_STEPS : AXIAL_STEPS;
+  const estimate = (col: number, row: number) => {
+    const dc = Math.abs(endCol - col);
+    const dr = Math.abs(endRow - row);
+    return Math.max(dc, dr) + (Math.SQRT2 - 1) * Math.min(dc, dr);
+  };
 
-  const dirs = [
-    { dc: 0, dr: -1 }, // up
-    { dc: 0, dr: 1 }, // down
-    { dc: -1, dr: 0 }, // left
-    { dc: 1, dr: 0 }, // right
-  ];
-
-  while (queue.length > 0) {
-    const curr = queue.shift()!;
+  for (let i = 0; i < queue.length; i++) {
+    // Keep the ordinary agent path in its original FIFO order. For diagonal
+    // paths, visit the lowest total estimated cost first.
+    if (diagonals) {
+      let closest = i;
+      for (let j = i + 1; j < queue.length; j++) {
+        const candidate = queue[j];
+        const best = queue[closest];
+        if (
+          candidate.estimate < best.estimate ||
+          (candidate.estimate === best.estimate && candidate.cost > best.cost)
+        ) {
+          closest = j;
+        }
+      }
+      [queue[i], queue[closest]] = [queue[closest], queue[i]];
+    }
+    const curr = queue[i];
     const currKey = key(curr.col, curr.row);
+    if (curr.cost !== costs.get(currKey)) continue;
 
     if (currKey === endKey) {
       // Reconstruct path
@@ -86,17 +124,21 @@ export function findPath(
       return path;
     }
 
-    for (const d of dirs) {
-      const nc = curr.col + d.dc;
-      const nr = curr.row + d.dr;
+    for (const { dc, dr } of dirs) {
+      const nc = curr.col + dc;
+      const nr = curr.row + dr;
       const nk = key(nc, nr);
-
-      if (visited.has(nk)) continue;
+      const diagonal = dc !== 0 && dr !== 0;
+      const cost = curr.cost + (diagonal ? Math.SQRT2 : 1);
+      if (cost >= (costs.get(nk) ?? Infinity)) continue;
       if (!isWalkable(nc, nr, tileMap, blockedTiles)) continue;
+      if (diagonal && !clearsTileCorners(curr.col, curr.row, nc, nr, tileMap, blockedTiles)) {
+        continue;
+      }
 
-      visited.add(nk);
+      costs.set(nk, cost);
       parent.set(nk, currKey);
-      queue.push({ col: nc, row: nr });
+      queue.push({ col: nc, row: nr, cost, estimate: cost + (diagonals ? estimate(nc, nr) : 0) });
     }
   }
 

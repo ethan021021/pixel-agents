@@ -1,11 +1,12 @@
 import { ROOM_COLORS } from '../../constants.js';
 import { adjustSprite, colorizeSprite } from '../colorize.js';
 import { getCatalogEntry } from '../layout/furnitureCatalog.js';
-import type { RoomModel, RoomModelInput } from '../roomModel.js';
+import type { RoomModel, RoomModelInput, RoomSeatSurface } from '../roomModel.js';
 import type { RoomPoint, RoomProjection } from '../roomProjection.js';
 import { roomFurnitureBounds, roomProjection } from '../roomProjection.js';
 import type { FurnitureInstance, OfficeLayout, SpriteData } from '../types.js';
 import { TILE_SIZE, TileType } from '../types.js';
+import type { OfficeState } from './officeState.js';
 import { roomAccessoryModel } from './roomAccessoryModels.js';
 import { roomSeatingModel } from './roomSeatingModels.js';
 
@@ -14,6 +15,7 @@ interface RoomSprite {
   left: number;
   top: number;
   footprint?: { left: number; top: number; right: number; bottom: number };
+  seating?: { anchors: readonly RoomSeatSurface[]; foreground?: RoomSprite };
 }
 
 interface RoomFurnitureArt {
@@ -22,6 +24,10 @@ interface RoomFurnitureArt {
   mirror?: boolean;
   surfaceHeight?: number;
   model?: { sprite: RoomSprite; x: number; y: number; depthX: number; depthY: number };
+}
+
+export interface RoomSeatArt extends RoomSeatSurface {
+  chair: RoomFurnitureArt;
 }
 
 interface Face {
@@ -83,10 +89,17 @@ function rasterize(model: RoomModel): RoomSprite {
         bottom: Math.max(...ground.map((box) => box.y + box.depth)),
       }
     : undefined;
+  const seating = model.seating && {
+    anchors: model.seating.anchors,
+    foreground: model.seating.foreground.length
+      ? rasterize({ boxes: model.seating.foreground })
+      : undefined,
+  };
   return {
     left,
     top,
     footprint,
+    seating,
     pixels: pixels.map((row, y) =>
       row.map(
         (pixel, x) =>
@@ -206,6 +219,8 @@ export function roomFurnitureArt(
       if (placement.color) {
         const tint = placement.color.colorize ? colorizeSprite : adjustSprite;
         sprite.pixels = tint(sprite.pixels, placement.color);
+        const front = sprite.seating?.foreground;
+        if (front) front.pixels = tint(front.pixels, placement.color);
       }
       if (sprites.size >= SPRITE_CACHE_SIZE) sprites.clear();
       sprites.set(key, sprite);
@@ -239,18 +254,48 @@ export function roomFurnitureArt(
   return art;
 }
 
+const seatArt = new WeakMap<RoomFurnitureArt[], Map<string, RoomSeatArt>>();
+
+/** The model anchors are in the same tile order as layoutToSeats. */
+export function roomSeatArt(office: OfficeState, uid: string | null): RoomSeatArt | undefined {
+  if (!uid) return;
+  const chairs = roomFurnitureArt(office.furniture, office.getLayout());
+  let seats = seatArt.get(chairs);
+  if (!seats) {
+    const positions = new Map<string, RoomSeatArt>();
+    for (const chair of chairs) {
+      const { model, furniture } = chair;
+      const uid = furniture.uid;
+      if (!model || uid === undefined) continue;
+      const anchors = model.sprite.seating?.anchors;
+      anchors?.forEach(({ x, y, z }, index) => {
+        positions.set(index ? `${uid}:${index}` : uid, {
+          x: model.x + x,
+          y: model.y + y,
+          z,
+          chair,
+        });
+      });
+    }
+    seatArt.set(chairs, positions);
+    seats = positions;
+  }
+  return seats.get(uid);
+}
+
 export function roomFurnitureSpriteBounds(
   art: RoomFurnitureArt,
-  projection: RoomProjection,
+  projection: Pick<RoomProjection, 'toScreen'>,
   zoom: number,
+  sprite = art.model?.sprite,
 ): { x: number; y: number; width: number; depth: number } {
   const model = art.model;
-  if (!model) return roomFurnitureBounds(art.furniture, projection, zoom);
+  if (!model || !sprite) return roomFurnitureBounds(art.furniture, projection, zoom);
   const anchor = projection.toScreen(model.x, model.y);
   return {
-    x: Math.round(anchor.x + model.sprite.left * zoom),
-    y: Math.round(anchor.y + model.sprite.top * zoom),
-    width: Math.floor(art.pixels[0].length * zoom),
+    x: Math.round(anchor.x + sprite.left * zoom),
+    y: Math.round(anchor.y + sprite.top * zoom),
+    width: Math.floor(sprite.pixels[0].length * zoom),
     depth: projection.toScreen(model.depthX, model.depthY).y,
   };
 }

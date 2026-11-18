@@ -164,6 +164,7 @@ function App() {
   const [alwaysShowOverlay, setAlwaysShowOverlay] = useState(false);
   const officeState = getOfficeState();
   const visiting = useSyncExternalStore(officeState.subscribeVisitor, () => !!officeState.visitor);
+  const [visitorActionsOpen, setVisitorActionsOpen] = useState(false);
   const panBeforeVisit = useRef<{ x: number; y: number } | null>(null);
 
   // Mobile shell (phones, touch tablets): office and terminal as sliding
@@ -282,11 +283,15 @@ function App() {
 
   const canVisit =
     isBrowserRuntime && !officeReadOnly && !editor.isEditMode && !isDebugMode && !intro;
-  const leaveOffice = useCallback(() => officeState.leaveOffice(), [officeState]);
+  const leaveOffice = useCallback(() => {
+    setVisitorActionsOpen(false);
+    officeState.leaveOffice();
+  }, [officeState]);
 
   const enterOffice = useCallback(
     (palette: number): boolean => {
       if (!canVisit || !officeState.enterOffice(palette) || !officeState.visitor) return false;
+      setVisitorActionsOpen(false);
       panBeforeVisit.current = editor.panRef.current;
       officeState.breakCameraFollow();
       const { cols, rows } = officeState.getLayout();
@@ -298,12 +303,17 @@ function App() {
     },
     [canVisit, editor.panRef, editor.zoom, officeState],
   );
+  const toggleVisitorActions = useCallback(() => {
+    if (canVisit && officeState.visitor) setVisitorActionsOpen((open) => !open);
+  }, [canVisit, officeState]);
 
   useEffect(() => {
     if (visiting && !canVisit) leaveOffice();
   }, [canVisit, leaveOffice, visiting]);
   useEffect(() => {
-    if (!visiting && panBeforeVisit.current) {
+    if (visiting) return;
+    setVisitorActionsOpen(false);
+    if (panBeforeVisit.current) {
       editor.panRef.current = panBeforeVisit.current;
       panBeforeVisit.current = null;
     }
@@ -392,6 +402,14 @@ function App() {
   ]);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const waveVisitor = useCallback(() => {
+    if (!canVisit || !officeState.visitor) return;
+    officeState.waveVisitor();
+    setVisitorActionsOpen(false);
+    containerRef.current
+      ?.querySelector<HTMLCanvasElement>('canvas[tabindex]')
+      ?.focus({ preventScroll: true });
+  }, [canVisit, officeState]);
 
   const [editorTickForKeyboard, setEditorTickForKeyboard] = useState(0);
   useEditorKeyboard(
@@ -585,6 +603,7 @@ function App() {
         officeState={officeState}
         onClick={handleClick}
         visiting={canVisit && visiting}
+        onVisitorTap={toggleVisitorActions}
         canFocusDesk={canFocusDesk}
         isEditMode={editor.isEditMode}
         editorState={editorState}
@@ -630,8 +649,10 @@ function App() {
             <div className="pointer-events-none absolute mobile-safe-top left-1/2 z-20 -translate-x-1/2">
               <OfficeVisitControls
                 visiting={visiting}
+                actionsOpen={visitorActionsOpen}
                 onEnter={enterOffice}
                 onLeave={leaveOffice}
+                onWave={waveVisitor}
               />
             </div>
           )}

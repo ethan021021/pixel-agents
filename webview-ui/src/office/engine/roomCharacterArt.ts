@@ -2,217 +2,315 @@ import { rgbaToHex } from '../../../../core/src/assets/colorUtils.js';
 import { CHAR_FRAME_H, CHAR_FRAME_W } from '../../../../core/src/assets/constants.js';
 import { Direction, type SpriteData } from '../types.js';
 
-const cache = new WeakMap<SpriteData, Map<number, SpriteData>>();
-const ROOM_FRAME_W = CHAR_FRAME_W + 2;
-const HIGHLIGHT = rgbaToHex(255, 255, 255, 255);
-const PUPIL = rgbaToHex(0, 0, 0, 255);
+const FRAME_W = 18;
+const STANDING_H = 39;
+export const ROOM_SEATED_FRAME_HEIGHT = 35;
+export const ROOM_SEATED_HIP = { x: 9, y: 24 } as const;
 
-/** The wardrobe's facing rows put the shoulders at different heights in a chair. */
-function shoulders(direction: Direction, sitting: boolean): number {
-  if (direction === Direction.DOWN) return sitting ? 22 : 18;
-  if (direction === Direction.UP) return sitting ? 17 : 18;
-  return sitting ? 21 : 20;
+export interface RoomCharacterPose {
+  standing?: SpriteData;
+  front?: SpriteData;
+  stride?: -1 | 0 | 1;
+  gesture?: 'rest' | 'type' | 'read' | 'wave';
+  beat?: 0 | 1;
+  blink?: boolean;
 }
 
-function upperHairRow(source: SpriteData, shoulder: number): number {
-  const first = source.findIndex((row) => row.some(Boolean));
-  if (first < 0) return -1;
-  // Compress only pixels present in an adjacent row, well above the eyes.
-  for (let y = first + 2; y <= Math.min(first + 7, shoulder - 9); y++) {
-    if (
-      source[y].some(Boolean) &&
-      source[y].every(
-        (pixel, x) => !pixel || pixel === source[y - 1][x] || pixel === source[y + 1][x],
-      )
-    )
-      return y;
-  }
-  return -1;
-}
+const cache = new WeakMap<
+  SpriteData,
+  { standing: SpriteData; front: SpriteData; frames: Map<string, SpriteData> }
+>();
 
-function headRow(source: string[], turn: number): string[] {
-  const row = new Array<string>(ROOM_FRAME_W).fill('');
-  for (let x = 0; x < CHAR_FRAME_W; x++) {
-    if (!source[x]) continue;
-    const center = x >= 3 && x <= 12;
-    // Bring the silhouette in by one pixel at each side. Keep the face and
-    // its accessories at full resolution when two pixels share a destination.
-    const dest = x + turn + (x < 3 ? 2 : x > 12 ? 0 : 1);
-    if (center || !row[dest]) row[dest] = source[x];
-  }
-  return row;
-}
+type Mask = readonly string[];
+type Paint = (rows: Mask, x: number, y: number, colors: Record<string, string>) => void;
 
-function torsoRow(source: string[], lean: number): string[] {
-  const row = [
-    ...source.slice(0, 3),
-    source[2],
-    ...source.slice(3, 14),
-    source[13],
-    ...source.slice(14),
-  ];
-  if (lean < 0 && !row[0]) return [...row.slice(1), ''];
-  if (lean > 0 && !row[ROOM_FRAME_W - 1]) return ['', ...row.slice(0, -1)];
-  return row;
-}
+// Drawn in room coordinates, facing screen right. The two shoulders, forearms,
+// toes, and cheek each keep their position on the same diagonal.
+const FACE = [
+  '  oooooo    ',
+  ' oSSSSSSo   ',
+  'oSSSSSSSSo  ',
+  'oSSSSSSSSSo ',
+  'osSSSSSSSSo ',
+  'osSSSSSESEo',
+  'oAsSSSSeSSo',
+  ' oAsSSSSSSHo',
+  ' oAsSSSShSo ',
+  '  oAsSSmSo  ',
+  '   ooAAoo   ',
+];
+const BACK_HEAD = [
+  '  oooooo    ',
+  ' ohhhhhho   ',
+  'ohhhhhhhho  ',
+  'ohhhhhhhhho ',
+  'ohhhhhhhhho ',
+  'ohhhhhhhhho ',
+  'ohhhhhhhAho ',
+  ' ohhhhhoAho ',
+  '  oohhhoAo  ',
+  '   ooooAo   ',
+  '      oo    ',
+];
+const COAT = [
+  '    oAAo    ',
+  '  ooCcco    ',
+  ' ooCCqqco   ',
+  ' oCCCTqqoo  ',
+  'oCCCTTqcco  ',
+  'oCCCTTqco   ',
+  'oCCCTTqco   ',
+  'oCCCTTqco   ',
+  ' oCCTTqco   ',
+  ' oCCCCqoo   ',
+  '  oooooo    ',
+];
+const SLEEVE = [' ooo ', 'oCCCo', 'oCCco', 'oCCco', 'oCcco', ' oco ', ' oAo ', ' oSo ', '  o  '];
+const LAP_SLEEVE = [
+  ' ooo     ',
+  'oCCCo    ',
+  'oCCco    ',
+  'oCCco    ',
+  ' oCcco   ',
+  '  oCCco  ',
+  '   ooASo ',
+  '     ooo ',
+];
+const WAVING_SLEEVE = [
+  [' oo    ', 'oSSo   ', 'oSSAo  ', ' oAAo  ', '  oCo  ', '  oCCoo', '   oCCo', '    ooo'],
+  ['oo     ', 'oSo    ', ' oSAo  ', '  oAo  ', '  oCCo ', '   oCoo', '   oCCo', '    ooo'],
+] as const;
+const TROUSER = [' oPPo ', 'oPPPo ', 'oPPpo ', 'oPPpo ', 'oPPpo ', 'oPPpo ', ' oPpo '];
+const SKIRT = ['  oPPPPo  ', ' oPPPPPPo ', ' oPPPPpPo ', 'oPPPPpPPPo', 'ooPPpPPooo', '  oooooo  '];
+const SHOE = [' oo   ', 'oDDoo ', 'oDdDDo', ' oooo '];
+const BENT_FAR = [
+  ' oPPo     ',
+  'oPPPPoo   ',
+  'oPPPPPpo  ',
+  ' oPPPPpo  ',
+  '  ooPPpo  ',
+  '    oPpo  ',
+  '    oPpo  ',
+  '     oo   ',
+];
+const BENT_NEAR = [
+  'oooo     ',
+  'oPPPoo   ',
+  'oPPPPPoo ',
+  'oPPPPPpo ',
+  ' oPPPpPo ',
+  '  ooPpPo ',
+  '    oPpo ',
+  '    oPpo ',
+  '    oPpo ',
+  '     oo  ',
+];
+// In the rear view, knees project away from the viewer above the hip line.
+// The soles stay close to the cushion so they tuck behind the chair's back.
+const RECEDING_LEG = ['    opo ', '  ooppo ', ' oPPppo ', 'oPPPpo  ', ' oooo   '];
+const RECEDING_SHOE = [' oo ', 'oDdo', ' ooo'];
 
 function shade(pixel: string, amount: number): string {
-  if (pixel.length !== 7 && pixel.length !== 9) return pixel;
   const channel = (at: number) =>
     Math.min(255, Math.round(parseInt(pixel.slice(at, at + 2), 16) * amount));
   const alpha = pixel.length === 9 ? parseInt(pixel.slice(7), 16) : 255;
   return rgbaToHex(channel(1), channel(3), channel(5), alpha);
 }
 
-function edgePixel(row: string[], facing: number): number {
-  let x = facing < 0 ? 0 : ROOM_FRAME_W - 1;
-  while (x >= 0 && x < ROOM_FRAME_W && !row[x]) x -= facing;
-  return x;
-}
-
-/** Reveal the near cheek and keep the original eye shapes and colors intact. */
-function widenCheek(row: string[]): void {
-  const edge = edgePixel(row, 1);
-  if (edge <= 0 || edge >= ROOM_FRAME_W - 1 || !row[edge - 1]) return;
-  row[edge + 1] = row[edge];
-  row[edge] = row[edge - 1];
-}
-
-/** Smaller eye highlights leave the eyes readable under the hairline. */
-function softenEyeHighlights(row: string[], above: string[], profile: boolean): void {
-  for (let x = 1; x < ROOM_FRAME_W - 1; x++) {
-    if (row[x] !== HIGHLIGHT) continue;
-    if (row[x - 1] !== PUPIL && row[x + 1] !== PUPIL && above[x] !== PUPIL) continue;
-    row[x] = shade(row[x], !profile && x < ROOM_FRAME_W / 2 ? 0.64 : 0.78);
+function mostCommon(pixels: string[], backup: string): string {
+  const counts = new Map<string, number>();
+  for (const ink of pixels) if (ink) counts.set(ink, (counts.get(ink) ?? 0) + 1);
+  let count = 0;
+  for (const [ink, frequency] of counts) {
+    if (frequency <= count) continue;
+    backup = ink;
+    count = frequency;
   }
+  return backup;
 }
 
-/** Keep the near shoe on the same floor pixel. The far half of the jacket
- * sits one pixel higher, while the far shoe recedes by a second pixel. */
-function angleFrontBody(art: SpriteData, shoulder: number, foot: number, facing: number): void {
-  if (shoulder > foot) return;
-  const depth = (x: number) => (x - (ROOM_FRAME_W - 1) / 2) * facing;
-  const nearFoot = art[foot].some((pixel, x) => pixel && depth(x) < 1);
-  const body = art.slice(shoulder, foot + 1);
-  const seam = art[shoulder - 1];
-  // The calf is already enlarged by duplicating rows. Advance the far foot
-  // at one of those repeats so the stagger retains cuffs and shoe colors.
-  const calf = body.findIndex(
-    (row, y) =>
-      y >= body.length - 8 &&
-      row.some(Boolean) &&
-      body[y + 1] !== undefined &&
-      row.every((pixel, x) => pixel === body[y + 1][x]),
-  );
-  for (let y = 0; y < body.length; y++) {
-    const belowKnee = y >= body.length - 8;
-    art[shoulder + y] = body[y].map((pixel, x) => {
-      const plane = depth(x);
-      if (plane < 1 || (belowKnee && !nearFoot)) return pixel;
-      const lift = calf >= 0 && y >= calf ? 2 : 1;
-      const sample = body[y + lift]?.[x] ?? '';
-      const collar = y === 0 && !seam[x] && !sample ? pixel : sample;
-      return collar && plane >= 2 ? shade(collar, 0.88) : collar;
-    });
-  }
+function sample(
+  source: SpriteData,
+  top: number,
+  bottom: number,
+  left: number,
+  right: number,
+): string[] {
+  return source.slice(top, bottom).flatMap((row) => row.slice(left, right));
 }
 
-/** The profile poses have only one visible sleeve and one shoe when standing.
- * Give the sleeve a side plane and reveal a little of the receding sole. */
-function angleSideBody(art: SpriteData, shoulder: number, foot: number, facing: number): void {
-  for (let y = shoulder + 2; y <= Math.min(shoulder + 9, foot - 5); y++) {
-    const row = art[y];
-    const nearEdge = edgePixel(row, -facing);
-    const side = nearEdge - facing;
-    const sleeve = row[nearEdge + facing];
-    if (side >= 0 && side < ROOM_FRAME_W && sleeve) row[side] = shade(sleeve, 0.88);
-  }
+function lastInk(source: SpriteData): number {
+  let y = source.length - 1;
+  while (y >= 0 && !source[y].some(Boolean)) y--;
+  return y;
+}
 
-  const shoeRows = art.slice(foot - 2, foot + 1);
-  if (foot < shoulder + 10 || shoeRows.length !== 3) return;
-  const outline = shoeRows[0].map((_, x) => shoeRows.some((row) => row[x]));
-  if (outline.lastIndexOf(true) - outline.indexOf(true) > 3) return;
-  for (let y = 0; y < shoeRows.length; y++) {
-    const row = shoeRows[y];
-    const dest = art[foot - 4 + y];
-    const spread = y === 0 ? 1 : 2;
-    for (let x = 0; x < ROOM_FRAME_W; x++) {
-      const side = x + spread * facing;
-      if (row[x] && side >= 0 && side < ROOM_FRAME_W && !dest[side]) {
-        dest[side] = shade(row[x], 0.84);
-      }
+function drawHair(
+  art: SpriteData,
+  reference: SpriteData,
+  skin: string,
+  back: boolean,
+  firstY: number,
+): void {
+  const first = reference.findIndex((row) => row.some(Boolean));
+  if (first < 0 || first > 12) return;
+  const colors = new Set(sample(reference, first, 11, 0, CHAR_FRAME_W).filter(Boolean));
+  const hairInk = (pixel: string) => pixel && pixel !== skin && colors.has(pixel);
+  // Retain the real hairstyle, hat, and head accessory swatches at the crown.
+  // Faces and anatomy are drawn below on their own plane.
+  for (let i = 0; i < 7; i++) {
+    const raw = reference[Math.round(first + ((12 - first) * i) / 6)];
+    for (let x = 0; x < CHAR_FRAME_W; x++) {
+      if (hairInk(raw[x])) art[firstY + i][x + 1] = raw[x];
+    }
+  }
+  // Preserve locks and hanging accessories around the side of the face.
+  for (let y = 13; y < 21; y++) {
+    const dest = art[firstY + y - 6];
+    for (let x = 0; x < CHAR_FRAME_W; x++) {
+      if ((x < 5 || x > 12 || back) && hairInk(reference[y][x])) dest[x + 1] = reference[y][x];
     }
   }
 }
 
-/** Form a room-view frame from the original wardrobe pixels. The additional
- * rows sit above the feet and leave the source frame's bottom padding intact,
- * including poses whose knees or shoes sit higher in the box. */
+/** Draw the same hinged seated pose in each room direction while taking colors
+ * and recognizable details from the composed character wardrobe. */
 export function roomCharacterSprite(
   source: SpriteData,
   direction: Direction,
   sitting: boolean,
+  pose: RoomCharacterPose = {},
 ): SpriteData {
   if (source.length !== CHAR_FRAME_H || source[0]?.length !== CHAR_FRAME_W) return source;
-  const key = direction * 2 + Number(sitting);
+  const {
+    standing = source,
+    front = standing,
+    stride = 0,
+    gesture = 'rest',
+    beat = 0,
+    blink = false,
+  } = pose;
+  const key = `${direction}:${sitting}:${stride}:${gesture}:${beat}:${blink}`;
   const cached = cache.get(source);
-  const existing = cached?.get(key);
+  const frames =
+    cached?.standing === standing && cached.front === front
+      ? cached.frames
+      : new Map<string, SpriteData>();
+  const existing = frames.get(key);
   if (existing) return existing;
+  if (lastInk(standing) < 23 || !standing.slice(10, 18).some((row) => row.some(Boolean)))
+    return source;
 
-  const shoulder = shoulders(direction, sitting);
-  const side = direction === Direction.LEFT || direction === Direction.RIGHT;
-  const facing = direction === Direction.DOWN || direction === Direction.LEFT ? -1 : 1;
-  const turn = side ? 0 : facing * 2;
-  const hairRow = upperHairRow(source, shoulder);
-  const extraRows = sitting
-    ? new Set([shoulder + 1, shoulder + 2, shoulder + 3])
-    : new Set([shoulder + 1, shoulder + 2, shoulder + 4, 25, 26, 27, 28]);
-  let lastPixelRow = source.length - 1;
-  while (lastPixelRow >= 0 && !source[lastPixelRow].some(Boolean)) lastPixelRow--;
-  // Very sparse custom frames can have no legs. Keep their empty rows at the
-  // bottom too, moving any unused extension above their art.
-  const topPadding = [...extraRows].filter((y) => y > lastPixelRow).length + Number(hairRow >= 0);
-  const art: SpriteData = Array.from({ length: topPadding }, () =>
-    new Array<string>(ROOM_FRAME_W).fill(''),
+  const back = direction === Direction.UP || direction === Direction.LEFT;
+  const mirror = direction === Direction.DOWN || direction === Direction.LEFT;
+  const skin =
+    front[17][8] || mostCommon(sample(front, 16, 18, 7, 9), rgbaToHex(183, 123, 93, 255));
+  const shirt = front[20][5] || mostCommon(sample(standing, 19, 24, 5, 12), skin);
+  const trousers = mostCommon(sample(front, 25, 27, 6, 10), shirt);
+  const shoes = front[29][5] || mostCommon(sample(front, 29, 31, 5, 11), trousers);
+  const hair = mostCommon(sample(standing, 5, 13, 2, 14), skin);
+  const iris = mostCommon(
+    sample(front, 14, 16, 6, 11).filter((ink) => ink && parseInt(ink.slice(1, 7), 16) < 0x454545),
+    shade(skin, 0.32),
   );
-  let shoulderRow = 0;
-  for (let y = 0; y < CHAR_FRAME_H; y++) {
-    if (y === hairRow) continue;
-    if (y === shoulder) shoulderRow = art.length;
-    const sourceRow = source[y];
-    const row =
-      y < shoulder
-        ? headRow(sourceRow, turn)
-        : y < shoulder + 6
-          ? torsoRow(sourceRow, y < shoulder + 3 ? turn : 0)
-          : ['', ...sourceRow, ''];
-    if (direction === Direction.DOWN && y === shoulder - 2) widenCheek(row);
-    art.push(row);
-    if (y <= lastPixelRow && extraRows.has(y)) art.push([...row]);
-  }
-  if (!sitting) {
-    const foot = art.length - source.length + lastPixelRow;
-    if (side) angleSideBody(art, shoulderRow, foot, facing);
-    else angleFrontBody(art, shoulderRow, foot, facing);
-  }
-  if (direction !== Direction.UP) {
-    const eye = shoulderRow - (side ? 5 : 3);
-    softenEyeHighlights(art[eye], art[eye - 1], side);
-    softenEyeHighlights(art[eye + 1], art[eye], side);
-  }
+  const ink = rgbaToHex(38, 31, 41, 255);
+  const paper = rgbaToHex(211, 222, 219, 255);
+  const colors: Record<string, string> = {
+    o: ink,
+    S: skin,
+    A: shade(skin, 0.83),
+    s: shade(skin, 0.91),
+    H: shade(skin, 1.2),
+    h: back ? hair : shade(skin, 1.12),
+    E: blink ? shade(skin, 0.47) : iris,
+    e: blink ? skin : shade(iris, 0.87),
+    m: shade(skin, 0.62),
+    C: shirt,
+    c: shade(shirt, 0.72),
+    q: shade(shirt, 1.15),
+    T: shirt,
+    P: trousers,
+    p: shade(trousers, 0.7),
+    D: shade(shoes, 1.2),
+    d: shade(shoes, 0.8),
+  };
+  const art: SpriteData = Array.from(
+    { length: sitting ? ROOM_SEATED_FRAME_HEIGHT : STANDING_H },
+    () => new Array<string>(FRAME_W).fill(''),
+  );
+  const paint: Paint = (rows, x, y, palette) => {
+    rows.forEach((row, dy) => {
+      for (let dx = 0; dx < row.length; dx++) {
+        const at = x + dx;
+        const color = palette[row[dx]];
+        if (color && at >= 0 && at < FRAME_W) art[y + dy][at] = color;
+      }
+    });
+  };
+  const hem = front[28].filter(Boolean).length;
+  const skirt = hem >= 10 && hem > front[29].filter(Boolean).length;
+  const legs = skirt ? { ...colors, P: skin, p: colors.A } : colors;
+  const farCloth = { ...legs, P: shade(legs.P, 0.79), D: shade(shoes, 0.82) };
 
-  // A one-pixel contour on the room's shadow side adds depth without adding
-  // pixels below the feet or replacing the wearer's palette.
-  const result = art.map((row, y) =>
-    row.map((pixel, x) => {
-      if (!pixel) return pixel;
-      if (!row[x + 1] || !art[y + 1]?.[x]) return shade(pixel, 0.83);
-      if (!row[x - 1] && !art[y - 1]?.[x]) return shade(pixel, 1.05);
-      return pixel;
-    }),
-  );
-  const frames = cached ?? new Map<number, SpriteData>();
+  if (sitting && back) {
+    paint(RECEDING_LEG, 8, 21, farCloth);
+    paint(RECEDING_SHOE, 12, 23, farCloth);
+    paint(RECEDING_LEG, 6, 23, legs);
+    paint(RECEDING_SHOE, 10, 25, colors);
+  } else if (sitting) {
+    paint(BENT_FAR, 8, 22, farCloth);
+    paint(SHOE, 12, 28, farCloth);
+    paint(BENT_NEAR, 4, 23, legs);
+    paint(SHOE, 9, 30, colors);
+  } else {
+    const forward = stride === 1;
+    const farX = stride === -1 ? 5 : 8 + stride * 2;
+    const nearX = stride === -1 ? 7 : 4 - stride;
+    const farY = forward ? 2 : 0;
+    const nearY = forward ? -2 : 0;
+    paint(TROUSER, farX, 27 + farY, farCloth);
+    paint(SHOE, farX, 33 + farY, farCloth);
+    paint(TROUSER, nearX, 28 + nearY, legs);
+    paint(SHOE, nearX, 35 + nearY, colors);
+  }
+  if (skirt) paint(SKIRT, sitting ? 5 : 4, sitting ? (back ? 22 : 23) : 25, colors);
+
+  const bodyY = sitting ? 15 : 17;
+  paint(COAT, 3, bodyY, colors);
+  // Give stripes, ties, and jackets from the cast their existing swatches on
+  // the visible front or back of the shirt, inside the new sleeve geometry.
+  for (let y = 0; y < 6; y++) {
+    for (let x = 0; x < 3; x++) {
+      const swatch = standing[19 + y][7 + x];
+      if (swatch) art[bodyY + y + 4][8 + x] = swatch;
+    }
+  }
+  if (sitting && (gesture === 'type' || gesture === 'read')) {
+    paint([' ooo ', 'oCCoo', 'oCCASo', ' oooo '], 10 + beat, bodyY + 6, colors);
+  }
+  if (gesture !== 'wave') {
+    paint(sitting ? LAP_SLEEVE : SLEEVE, 2, bodyY + 2 + (sitting ? 0 : stride), colors);
+  }
+  if (sitting && gesture === 'read') {
+    paint(['  oo ', 'opppo', ' oppo', '  oo '], 10, bodyY + 8, { o: ink, p: paper });
+  }
+  const headY = sitting ? 6 : 8;
+  paint(back ? BACK_HEAD : FACE, 2, headY, colors);
+  const glasses = front[15][7];
+  if (
+    !back &&
+    glasses &&
+    glasses !== skin &&
+    glasses === front[15][8] &&
+    glasses !== front[14][7]
+  ) {
+    paint([' llll ', 'l l ll', ' llll '], 8, headY + 4, { l: glasses });
+  }
+  drawHair(art, standing, skin, back, headY - 2);
+  if (gesture === 'wave') paint(WAVING_SLEEVE[beat], 0, bodyY - 3, colors);
+
+  const result = mirror ? art.map((row) => row.reverse()) : art;
   frames.set(key, result);
-  if (!cached) cache.set(source, frames);
+  if (frames !== cached?.frames) cache.set(source, { standing, front, frames });
   return result;
 }

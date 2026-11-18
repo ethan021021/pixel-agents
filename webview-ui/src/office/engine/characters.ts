@@ -43,6 +43,9 @@ function directionBetween(
 ): Direction {
   const dc = toCol - fromCol;
   const dr = toRow - fromRow;
+  // Equal deltas travel vertically in the angled room; opposite deltas use
+  // the left/right sprite for the corresponding screen direction.
+  if (dc === dr && dc !== 0) return dc > 0 ? Direction.DOWN : Direction.UP;
   if (dc > 0) return Direction.RIGHT;
   if (dc < 0) return Direction.LEFT;
   if (dr > 0) return Direction.DOWN;
@@ -304,7 +307,9 @@ export function stepCharacterWalk(ch: Character, dt: number): void {
   const nextTile = ch.path[0];
   ch.dir = directionBetween(ch.tileCol, ch.tileRow, nextTile.col, nextTile.row);
 
-  ch.moveProgress += (WALK_SPEED_PX_PER_SEC / TILE_SIZE) * dt;
+  const diagonal = nextTile.col !== ch.tileCol && nextTile.row !== ch.tileRow;
+  const stepLength = diagonal ? TILE_SIZE * Math.SQRT2 : TILE_SIZE;
+  ch.moveProgress += (WALK_SPEED_PX_PER_SEC / stepLength) * dt;
 
   const fromCenter = tileCenter(ch.tileCol, ch.tileRow);
   const toCenter = tileCenter(nextTile.col, nextTile.row);

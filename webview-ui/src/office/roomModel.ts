@@ -10,10 +10,23 @@ export interface RoomBox {
   colors: readonly [top: string, xFace: string, yFace: string];
 }
 
+/** The cushion contact point for a seated character's hips, in local tile space. */
+export interface RoomSeatSurface {
+  x: number;
+  y: number;
+  z: number;
+}
+
 export interface RoomModel {
   /** The painter's order, from the rear pieces to the nearest details. */
   boxes: RoomBox[];
   surfaceHeight?: number;
+  seating?: {
+    /** Row-major, in the same order as the usable tiles in the footprint. */
+    anchors: readonly RoomSeatSurface[];
+    /** The near-facing portions that cover the edge of a seated character. */
+    foreground: RoomBox[];
+  };
 }
 
 export interface RoomModelInput {

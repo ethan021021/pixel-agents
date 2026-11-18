@@ -13,6 +13,7 @@ import {
   PET_HIT_HALF_WIDTH,
   PET_HIT_HEIGHT,
   VISITOR_ID,
+  VISITOR_WAVE_SEC,
   WAITING_BUBBLE_DURATION_SEC,
 } from '../../constants.js';
 import { contextUsedShare } from '../contextGauge.js';
@@ -24,7 +25,7 @@ import {
   layoutToSeats,
   layoutToTileMap,
 } from '../layout/layoutSerializer.js';
-import { findPath, getWalkableTiles, isWalkable } from '../layout/tileMap.js';
+import { clearsTileCorners, findPath, getWalkableTiles, isWalkable } from '../layout/tileMap.js';
 import { facingOffset, pairWorkstations } from '../layout/workstations.js';
 import { getPetCount, getPetName } from '../sprites/petSpriteData.js';
 import { getLoadedCharacterCount } from '../sprites/spriteData.js';
@@ -527,6 +528,12 @@ export class OfficeState {
     this.visitorArrival = null;
   }
 
+  waveVisitor(): boolean {
+    if (!this.visitor) return false;
+    this.visitor.visitorWave = VISITOR_WAVE_SEC;
+    return true;
+  }
+
   moveVisitor(col: number, row: number): boolean {
     if (!Number.isInteger(col) || !Number.isInteger(row)) return false;
     return this.sendVisitor([{ col, row }]);
@@ -710,6 +717,7 @@ export class OfficeState {
   private updateVisitor(dt: number): void {
     const visitor = this.visitor;
     if (!visitor) return;
+    if (visitor.visitorWave) visitor.visitorWave = Math.max(0, visitor.visitorWave - dt);
     tickBlink(visitor, dt, false);
     if (visitor.seatId && this.seats.get(visitor.seatId)?.assigned) {
       this.reconcileVisitor();
@@ -717,6 +725,19 @@ export class OfficeState {
     }
     const next = visitor.path[0];
     if (!next) return;
+    if (
+      !clearsTileCorners(
+        visitor.tileCol,
+        visitor.tileRow,
+        next.col,
+        next.row,
+        this.tileMap,
+        this.blockedTiles,
+      )
+    ) {
+      this.reconcileVisitor();
+      return;
+    }
     if (!isWalkable(next.col, next.row, this.tileMap, this.blockedTiles)) {
       const key = this.getSeatAtTile(next.col, next.row);
       const seat = key ? this.seats.get(key) : undefined;

@@ -30,11 +30,21 @@ export function visitorRoute(
   const step = visitor.moveProgress > 0 ? visitor.path[0] : undefined;
   const from = step ?? visitorTile(visitor);
   let best: VisitorTile[] | null = null;
+  let bestCost = Infinity;
   for (const to of destinations) {
     if (!isWalkable(to.col, to.row, tileMap, blockedTiles)) continue;
-    const route = findPath(from.col, from.row, to.col, to.row, tileMap, blockedTiles);
+    const route = findPath(from.col, from.row, to.col, to.row, tileMap, blockedTiles, true);
     if (route.length === 0 && (from.col !== to.col || from.row !== to.row)) continue;
-    if (!best || route.length < best.length) best = route;
+    let previous = from;
+    let cost = 0;
+    for (const tile of route) {
+      cost += tile.col !== previous.col && tile.row !== previous.row ? Math.SQRT2 : 1;
+      previous = tile;
+    }
+    if (cost < bestCost) {
+      bestCost = cost;
+      best = route;
+    }
   }
   return best && step ? [step, ...best] : best;
 }
