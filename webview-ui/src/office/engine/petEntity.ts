@@ -307,37 +307,29 @@ export function updatePet(
   }
 }
 
-/**
- * Resolve the sprite for the pet's current state + direction + frame.
- * Returns null when sprites haven't loaded yet — renderer guards.
- */
-export function getPetSpriteData(pet: Pet, petSprites: PetSpriteFrames | null): SpriteData | null {
+/** Resolve the current pixel frame and the directional animation it belongs to. */
+export function getPetPose(pet: Pet, petSprites: PetSpriteFrames | null) {
   if (!petSprites) return null;
-
-  if (pet.state === PetState.IDLE) {
-    const frameIdx = PET_IDLE_SEQUENCE[pet.frame % PET_IDLE_SEQUENCE.length];
-    switch (pet.dir) {
-      case Direction.DOWN:
-        return petSprites.idleDown[frameIdx];
-      case Direction.UP:
-        return petSprites.idleUp[frameIdx];
-      case Direction.RIGHT:
-        return petSprites.idleRight[frameIdx];
-      case Direction.LEFT:
-        return petSprites.idleLeft[frameIdx];
-    }
-  }
-
-  // WALK or FOLLOW
-  const frameIdx = PET_WALK_SEQUENCE[pet.frame % PET_WALK_SEQUENCE.length];
+  const idle = pet.state === PetState.IDLE;
+  const sequence = idle ? PET_IDLE_SEQUENCE : PET_WALK_SEQUENCE;
+  let animation: PetSpriteFrames['walkDown'];
   switch (pet.dir) {
     case Direction.DOWN:
-      return petSprites.walkDown[frameIdx];
+      animation = idle ? petSprites.idleDown : petSprites.walkDown;
+      break;
     case Direction.UP:
-      return petSprites.walkUp[frameIdx];
+      animation = idle ? petSprites.idleUp : petSprites.walkUp;
+      break;
     case Direction.RIGHT:
-      return petSprites.walkRight[frameIdx];
+      animation = idle ? petSprites.idleRight : petSprites.walkRight;
+      break;
     case Direction.LEFT:
-      return petSprites.walkLeft[frameIdx];
+      animation = idle ? petSprites.idleLeft : petSprites.walkLeft;
+      break;
   }
+  return { animation, pixels: animation[sequence[pet.frame % sequence.length]] };
+}
+
+export function getPetSpriteData(pet: Pet, petSprites: PetSpriteFrames | null): SpriteData | null {
+  return getPetPose(pet, petSprites)?.pixels ?? null;
 }

@@ -1,4 +1,4 @@
-import { GREETER_ID, PET_HIT_HALF_WIDTH, PET_HIT_HEIGHT } from '../../constants.js';
+import { GREETER_ID } from '../../constants.js';
 import type { OfficeState } from '../engine/officeState.js';
 import { roomCharacterFrame } from '../engine/roomCharacterFrame.js';
 import {
@@ -6,6 +6,7 @@ import {
   roomFurnitureSpriteBounds,
   roomSeatArt,
 } from '../engine/roomFurnitureArt.js';
+import { roomPetFrame } from '../engine/roomPetFrame.js';
 import { getCatalogEntry } from '../layout/furnitureCatalog.js';
 import type { RoomProjection } from '../roomProjection.js';
 import type { FurnitureInstance, Seat, SpriteData } from '../types.js';
@@ -42,15 +43,9 @@ export function roomActorAt(
     agentId = ch.id;
   }
   for (const pet of office.getPets()) {
-    const foot = projection.toScreen(pet.x, pet.y);
-    const spriteDepth = projection.toScreen(pet.x, pet.y + TILE_SIZE / 2).y;
-    if (
-      spriteDepth >= depth &&
-      Math.abs(x - foot.x) <= PET_HIT_HALF_WIDTH * zoom &&
-      y >= foot.y - PET_HIT_HEIGHT * zoom &&
-      y <= foot.y
-    ) {
-      depth = spriteDepth;
+    const frame = roomPetFrame(pet, projection, zoom);
+    if (frame && frame.depth >= depth && pickPixel(frame.pixels, frame, zoom, x, y)) {
+      depth = frame.depth;
       agentId = null;
       petId = pet.id;
     }

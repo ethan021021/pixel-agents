@@ -12,16 +12,15 @@ import {
 import { isWalkable } from '../layout/tileMap.js';
 import type { RoomPoint, RoomProjection } from '../roomProjection.js';
 import { roomSampleInset } from '../roomRaster.js';
-import { getPetSprites } from '../sprites/petSpriteData.js';
 import { getCachedSprite, getOutlineSprite } from '../sprites/spriteCache.js';
 import { BUBBLE_HEART_SPRITE } from '../sprites/spriteData.js';
 import { CharacterState, TILE_SIZE } from '../types.js';
 import { roomMatrixSprite } from './matrixEffect.js';
 import type { OfficeState } from './officeState.js';
-import { getPetSpriteData } from './petEntity.js';
 import { isGhostHeadlessAgentsEnabled, renderVisitorMarker } from './renderer.js';
 import { roomCharacterFrame } from './roomCharacterFrame.js';
 import { roomFurnitureArt, roomFurnitureSpriteBounds, roomSeatArt } from './roomFurnitureArt.js';
+import { roomPetFrame } from './roomPetFrame.js';
 import { drawRoomShell, drawRoomTarget, roomPolygon } from './roomShell.js';
 
 type FurnitureArt = ReturnType<typeof roomFurnitureArt>[number];
@@ -47,12 +46,19 @@ function drawFurniture(
   }
 }
 
-function footShadow(ctx: CanvasRenderingContext2D, foot: RoomPoint, zoom: number): void {
+function footShadow(
+  ctx: CanvasRenderingContext2D,
+  foot: RoomPoint,
+  zoom: number,
+  halfWidth = 5,
+): void {
   const x = Math.round(foot.x);
   const y = Math.round(foot.y);
   ctx.fillStyle = ROOM_COLORS.contactShadow;
-  ctx.fillRect(x - 5 * zoom, y - zoom, 10 * zoom, 2 * zoom);
-  ctx.fillRect(x - 3 * zoom, y - 2 * zoom, 6 * zoom, 4 * zoom);
+  const wide = halfWidth * zoom;
+  const narrow = wide * 0.6;
+  ctx.fillRect(Math.round(x - wide), y - zoom, Math.round(2 * wide), 2 * zoom);
+  ctx.fillRect(Math.round(x - narrow), y - 2 * zoom, Math.round(2 * narrow), 4 * zoom);
 }
 
 function drawRoomBitmap(
@@ -181,21 +187,21 @@ export function renderRoom(
     });
   }
   for (const pet of office.getPets()) {
-    const data = getPetSpriteData(pet, getPetSprites(pet.petType));
-    if (!data) continue;
-    const point = projection.toScreen(pet.x, pet.y);
-    const image = getCachedSprite(data, zoom);
-    const x = Math.round(point.x - image.width / 2);
-    const y = Math.round(point.y - image.height);
-    const depth = projection.toScreen(pet.x, pet.y + TILE_SIZE / 2).y;
-    footShadow(ctx, point, zoom);
-    sprites.push({ depth, draw: () => ctx.drawImage(image, x, y) });
+    const frame = roomPetFrame(pet, projection, zoom);
+    if (!frame) continue;
+    const image = getCachedSprite(frame.pixels, zoom);
+    footShadow(ctx, frame.foot, zoom, frame.shadowHalfWidth);
+    sprites.push({ depth: frame.depth, draw: () => ctx.drawImage(image, frame.x, frame.y) });
     if (pet.bubbleType === 'heart') {
       overlays.push(() => {
         const heart = getCachedSprite(BUBBLE_HEART_SPRITE, zoom);
         ctx.save();
         ctx.globalAlpha = Math.max(0, Math.min(1, pet.bubbleTimer / BUBBLE_FADE_DURATION_SEC));
-        ctx.drawImage(heart, Math.round(point.x - heart.width / 2), y - zoom - heart.height);
+        ctx.drawImage(
+          heart,
+          Math.round(frame.foot.x - heart.width / 2),
+          frame.headY - zoom - heart.height,
+        );
         ctx.restore();
       });
     }
